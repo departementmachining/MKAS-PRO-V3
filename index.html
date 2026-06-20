@@ -100,39 +100,127 @@
         .sidebar-item.active { background: var(--primary); color: white; box-shadow: 0 10px 15px -3px rgba(227,30,36,0.4); }
         .main-content { margin-left: 280px; padding: 40px; min-height: 100vh; }
         .icon-box { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 14px; margin-bottom: 16px; }
+
+        /* ========== MOBILE RESPONSIVE ========== */
+        .mobile-topbar { display: none; }
+        .bottom-nav { display: none; }
+        .sidebar-overlay { display: none; }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+                z-index: 80;
+                width: 260px;
+            }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .sidebar-overlay {
+                display: none;
+                position: fixed; inset: 0; background: rgba(15,23,42,0.6);
+                z-index: 70; backdrop-filter: blur(2px);
+            }
+            .sidebar-overlay.active { display: block; }
+
+            .mobile-topbar {
+                display: flex; align-items: center; justify-content: space-between;
+                position: sticky; top: 0; z-index: 60;
+                background: var(--secondary); padding: 16px 20px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            }
+            .mobile-topbar .hamburger-btn {
+                width: 42px; height: 42px; border-radius: 12px; background: rgba(255,255,255,0.08);
+                display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;
+            }
+            .mobile-topbar .brand { color: white; font-weight: 800; font-style: italic; letter-spacing: -0.03em; font-size: 1.25rem; }
+            .mobile-topbar .brand span { color: var(--primary); }
+
+            .main-content { margin-left: 0; padding: 16px; padding-bottom: 96px; }
+
+            header.page-header { display: none !important; }
+
+            .bottom-nav {
+                display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 65;
+                background: var(--secondary); padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+                box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+            }
+            .bottom-nav-item {
+                flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                gap: 3px; padding: 6px 2px; border-radius: 12px; color: #94a3b8; font-size: 9px; font-weight: 700;
+                text-transform: uppercase; letter-spacing: 0.02em;
+            }
+            .bottom-nav-item.active { color: white; }
+            .bottom-nav-item.active i { color: var(--primary); }
+            .bottom-nav-item i { width: 20px; height: 20px; }
+
+            .glass-card { border-radius: 18px; }
+            .glass-card:hover { transform: none; }
+            table { font-size: 12px; }
+            .icon-box { width: 40px; height: 40px; }
+        }
+
+        @media (max-width: 640px) {
+            .main-content { padding: 12px; padding-bottom: 92px; }
+            h1, .text-4xl { font-size: 1.5rem !important; }
+            #trx-amount { font-size: 2.25rem !important; padding: 1.25rem !important; }
+        }
+
+        /* ========== PRINT ========== */
         @media print {
             @page { size: A4; margin: 1.5cm; }
-            .no-print, .sidebar, button, #toast, select, header { display: none !important; }
+            .no-print, .sidebar, .sidebar-overlay, .mobile-topbar, .bottom-nav, button, #toast, select, .page-header { display: none !important; }
             .main-content { margin-left: 0 !important; padding: 0 !important; }
             .glass-card { box-shadow: none !important; border: none !important; background: white !important; }
-            .print-header { display: block !important; text-align: center; border-bottom: 3px double #000; padding-bottom: 20px; margin-bottom: 30px; }
+            .print-header { display: block !important; text-align: center; border-bottom: 3px double #000; padding-bottom: 20px; margin-bottom: 30px; position: relative; }
             table { width: 100% !important; border-collapse: collapse !important; }
             th { border: 1px solid #000 !important; padding: 10px !important; color: black !important; }
             td { border: 1px solid #e2e8f0 !important; padding: 10px !important; }
+            .print-watermark {
+                display: block !important;
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+                width: 60%; opacity: 0.08; z-index: -1; pointer-events: none;
+            }
+            .print-row-hidden { display: none !important; }
+            .print-signature { display: flex !important; }
         }
         .print-header { display: none; }
+        .print-watermark { display: none; }
+        .print-signature { display: none; }
     </style>
 </head>
 <body>
 
     <!-- LOGIN PAGE -->
-    <div id="loginPage" class="fixed inset-0 z-[100] bg-slate-50 flex items-center justify-center p-6">
-        <div class="max-w-4xl w-full flex flex-col md:flex-row glass-card overflow-hidden shadow-2xl animate__animated animate__fadeInUp">
-            <div class="md:w-1/2 bg-slate-900 p-12 text-white flex flex-col justify-between relative overflow-hidden">
+    <div id="loginPage" class="fixed inset-0 z-[100] bg-slate-50 flex items-center justify-center p-0 md:p-6 overflow-y-auto">
+        <div class="min-h-screen md:min-h-0 w-full max-w-4xl flex flex-col md:flex-row md:glass-card overflow-hidden md:shadow-2xl animate__animated animate__fadeInUp">
+
+            <!-- Branding panel: compact header on mobile, full panel on desktop -->
+            <div class="md:w-1/2 bg-slate-900 text-white relative overflow-hidden
+                        flex flex-row md:flex-col items-center md:items-stretch justify-between md:justify-between
+                        px-6 py-5 md:p-12 flex-shrink-0">
                 <div class="absolute top-0 right-0 w-64 h-64 bg-red-600/10 rounded-full -mr-32 -mt-32"></div>
-                <div class="relative z-10">
-                    <div class="text-4xl font-extrabold italic tracking-tighter mb-2">MKAS<span class="text-red-600">PRO</span></div>
-                    <p class="text-slate-400 font-medium">Sistem Manajemen Keuangan Modern</p>
+
+                <div class="relative z-10 flex items-center md:block gap-3">
+                    <div class="text-2xl md:text-4xl font-extrabold italic tracking-tighter md:mb-2">MKAS<span class="text-red-600">PRO</span></div>
+                    <p class="hidden md:block text-slate-400 font-medium mt-2">Sistem Manajemen Keuangan Modern</p>
                 </div>
-                <div class="space-y-4 relative z-10">
+
+                <!-- mobile-only shield icon badge -->
+                <div class="md:hidden relative z-10 w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+                    <i data-lucide="shield-check" class="text-red-500 w-5 h-5"></i>
+                </div>
+
+                <!-- desktop-only feature list -->
+                <div class="hidden md:flex flex-col space-y-4 relative z-10">
                     <div class="flex items-center gap-3"><i data-lucide="shield-check" class="text-red-500 w-5 h-5"></i><p class="text-sm">Login Aman via Firebase Auth</p></div>
                     <div class="flex items-center gap-3"><i data-lucide="file-text" class="text-red-500 w-5 h-5"></i><p class="text-sm">Laporan Siap Cetak Standar Akuntansi</p></div>
                     <div class="flex items-center gap-3"><i data-lucide="users" class="text-red-500 w-5 h-5"></i><p class="text-sm">Manajemen Anggota Tak Terbatas</p></div>
                 </div>
-                <p class="text-xs text-slate-500 relative z-10">© 2024 MKAS PRO Enterprise • v3.1.0 Firebase Auth</p>
+                <p class="hidden md:block text-xs text-slate-500 relative z-10">© 2024 MKAS PRO Enterprise • v3.1.0 Firebase Auth</p>
             </div>
-            <div class="md:w-1/2 p-12 bg-white">
-                <h2 class="text-3xl font-extrabold text-slate-800 mb-2">Selamat Datang</h2>
+
+            <!-- Form panel -->
+            <div class="md:w-1/2 p-6 md:p-12 bg-white flex-1 flex flex-col justify-center">
+                <h2 class="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2">Selamat Datang</h2>
                 <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Firebase Anda</p>
                 <div class="space-y-6">
                     <div>
@@ -145,14 +233,33 @@
                     </div>
                     <button onclick="handleLogin()" id="btn-login" class="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-red-600/30 transition-all transform hover:scale-[1.02]">Masuk Sekarang</button>
                 </div>
+
+                <!-- mobile-only compact feature footer -->
+                <div class="md:hidden flex items-center justify-center gap-4 mt-8 text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+                    <span class="flex items-center gap-1"><i data-lucide="file-text" class="w-3.5 h-3.5 text-red-500"></i> Laporan Cetak</span>
+                    <span class="flex items-center gap-1"><i data-lucide="users" class="w-3.5 h-3.5 text-red-500"></i> Anggota</span>
+                </div>
+                <p class="md:hidden text-center text-[9px] text-slate-300 mt-4">© 2024 MKAS PRO Enterprise • v3.1.0</p>
             </div>
         </div>
     </div>
 
     <div id="mainApp" class="hidden">
-        <aside class="sidebar no-print">
-            <div class="p-8 mb-6">
+
+        <!-- MOBILE TOPBAR (hamburger) -->
+        <div class="mobile-topbar no-print">
+            <div class="hamburger-btn" onclick="toggleSidebar(true)"><i data-lucide="menu" class="w-5 h-5"></i></div>
+            <div class="brand" id="mobilePageTitle">MKAS<span>PRO</span></div>
+            <div id="mobile-user-badge" class="text-[9px] font-bold text-slate-400 bg-white/10 px-2 py-1 rounded-full max-w-[80px] truncate"></div>
+        </div>
+
+        <!-- SIDEBAR OVERLAY (mobile) -->
+        <div id="sidebarOverlay" class="sidebar-overlay no-print" onclick="toggleSidebar(false)"></div>
+
+        <aside class="sidebar no-print" id="sidebarEl">
+            <div class="p-8 mb-6 flex items-center justify-between">
                 <div class="text-3xl font-extrabold italic text-white tracking-tighter">MKAS<span class="text-red-600">PRO</span></div>
+                <div class="hamburger-btn lg:hidden" style="display:none" id="sidebarCloseBtn" onclick="toggleSidebar(false)"><i data-lucide="x" class="w-5 h-5"></i></div>
             </div>
             <nav class="flex-1">
                 <div onclick="switchPage('dashboard')" id="nav-dashboard" class="sidebar-item active"><i data-lucide="layout-dashboard" class="w-5 h-5 mr-4"></i> Dashboard</div>
@@ -171,8 +278,17 @@
             </div>
         </aside>
 
+        <!-- BOTTOM NAV (mobile) -->
+        <nav class="bottom-nav no-print">
+            <div onclick="switchPage('dashboard')" id="bnav-dashboard" class="bottom-nav-item active"><i data-lucide="layout-dashboard"></i>Dashboard</div>
+            <div onclick="switchPage('members')" id="bnav-members" class="bottom-nav-item"><i data-lucide="wallet"></i>Members</div>
+            <div onclick="switchPage('transaction')" id="bnav-transaction" class="bottom-nav-item"><i data-lucide="circle-plus"></i>Input</div>
+            <div onclick="switchPage('savings')" id="bnav-savings" class="bottom-nav-item"><i data-lucide="piggy-bank"></i>Saving</div>
+            <div onclick="switchPage('history')" id="bnav-history" class="bottom-nav-item"><i data-lucide="file-bar-chart"></i>Riwayat</div>
+        </nav>
+
         <main class="main-content">
-            <header class="flex justify-between items-center mb-10 no-print">
+            <header class="page-header flex justify-between items-center mb-10 no-print">
                 <div>
                     <h1 id="pageTitle" class="text-4xl font-black text-slate-800 tracking-tight">Dashboard</h1>
                     <p id="pageDate" class="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1"></p>
@@ -181,8 +297,10 @@
             </header>
 
             <div class="print-header">
-                <div class="text-3xl font-black italic tracking-tighter">MKAS PRO <span style="color:#e31e24">FINANCIAL SYSTEM</span></div>
-                <div class="text-xs font-bold uppercase tracking-widest mt-2">Laporan Transaksi Keuangan</div>
+                <img id="print-watermark-img" class="print-watermark" src="" alt="">
+                <div id="print-org-name" class="text-3xl font-black italic tracking-tighter">MKAS PRO <span style="color:#e31e24">FINANCIAL SYSTEM</span></div>
+                <div id="print-report-title" class="text-xs font-bold uppercase tracking-widest mt-2">Laporan Transaksi Keuangan</div>
+                <div id="print-report-period" class="text-[10px] font-bold uppercase tracking-widest mt-1 text-slate-500"></div>
             </div>
 
             <div id="pageContainer">
@@ -252,12 +370,12 @@
                             </div>
                             <div class="flex gap-3">
                                 <select id="filter-month" onchange="renderHistory()" class="px-4 py-3 border rounded-xl font-bold text-xs bg-slate-50 outline-none"></select>
-                                <button onclick="window.print()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-xs font-black hover:bg-black flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4"></i> CETAK PDF</button>
+                                <button onclick="openPrintModal()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-xs font-black hover:bg-black flex items-center gap-2"><i data-lucide="settings-2" class="w-4 h-4"></i> EDIT & CETAK</button>
                             </div>
                         </div>
                         <div class="overflow-x-auto rounded-2xl border border-slate-100">
                             <table class="w-full text-left">
-                                <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-5">Tanggal</th><th class="p-5">Keterangan</th><th class="p-5">Kategori</th><th class="p-5 text-right">Debit</th><th class="p-5 text-right">Kredit</th><th class="p-5 text-center no-print">Aksi</th></tr></thead>
+                                <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-5 no-print w-10"><input type="checkbox" id="chk-all-history" onchange="toggleAllHistoryChecks(this.checked)" class="w-4 h-4"></th><th class="p-5">Tanggal</th><th class="p-5">Keterangan</th><th class="p-5">Kategori</th><th class="p-5 text-right">Debit</th><th class="p-5 text-right">Kredit</th><th class="p-5 text-center no-print">Aksi</th></tr></thead>
                                 <tbody id="history-list" class="text-xs font-bold text-slate-700"></tbody>
                             </table>
                         </div>
@@ -271,10 +389,103 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="print-signature mt-16 justify-between text-xs font-bold">
+                            <div class="text-center w-48">
+                                <p id="print-sign-left-role">Mengetahui,</p>
+                                <div class="h-20"></div>
+                                <p class="border-t border-black pt-2" id="print-sign-left-name">(...........................)</p>
+                            </div>
+                            <div class="text-center w-48">
+                                <p id="print-sign-right-role">Bendahara,</p>
+                                <div class="h-20"></div>
+                                <p class="border-t border-black pt-2" id="print-sign-right-name">(...........................)</p>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>
         </main>
+    </div>
+
+    <!-- ========== MODAL: EDIT & CETAK LAPORAN ========== -->
+    <div id="printModal" class="hidden fixed inset-0 z-[150] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl max-h-[90vh] flex flex-col animate__animated animate__fadeInUp animate__faster">
+            <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
+                <h2 class="text-lg font-black flex items-center gap-2"><i data-lucide="file-edit" class="text-red-600 w-5 h-5"></i> Edit Laporan Cetak</h2>
+                <button onclick="closePrintModal()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-6">
+                <!-- Header laporan -->
+                <div>
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Header Laporan</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Nama Organisasi</label>
+                            <input type="text" id="pm-org-name" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm" placeholder="MKAS PRO FINANCIAL SYSTEM">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Judul Laporan</label>
+                            <input type="text" id="pm-report-title" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm" placeholder="Laporan Transaksi Keuangan">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Keterangan Periode (opsional)</label>
+                            <input type="text" id="pm-report-period" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm" placeholder="Contoh: Periode Januari - Juni 2026">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logo watermark -->
+                <div>
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Logo Watermark (Background Transparan)</h3>
+                    <div class="flex items-center gap-4">
+                        <div id="pm-logo-preview" class="w-16 h-16 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            <i data-lucide="image" class="text-slate-300 w-6 h-6"></i>
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <input type="file" id="pm-logo-input" accept="image/*" onchange="handleLogoUpload(event)" class="text-xs w-full file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-slate-900 file:text-white text-slate-500">
+                            <div class="flex items-center gap-3">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Transparansi</label>
+                                <input type="range" id="pm-logo-opacity" min="2" max="30" value="8" oninput="updateWatermarkOpacity()" class="flex-1">
+                                <button onclick="removeLogoWatermark()" class="text-[10px] font-black text-red-500 uppercase">Hapus</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tanda tangan -->
+                <div>
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3">Kolom Tanda Tangan</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input type="text" id="pm-sign-left-role" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-xs" placeholder="Mengetahui,">
+                        <input type="text" id="pm-sign-left-name" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-xs" placeholder="Nama Ketua">
+                        <input type="text" id="pm-sign-right-role" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-xs" placeholder="Bendahara,">
+                        <input type="text" id="pm-sign-right-name" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-xs" placeholder="Nama Bendahara">
+                    </div>
+                    <label class="flex items-center gap-2 mt-3 text-xs font-bold text-slate-500">
+                        <input type="checkbox" id="pm-show-signature" checked class="w-4 h-4"> Tampilkan kolom tanda tangan di laporan
+                    </label>
+                </div>
+
+                <!-- Pilih data riwayat -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Pilih Transaksi yang Dicetak</h3>
+                        <div class="flex gap-2">
+                            <button onclick="pmSelectAll(true)" class="text-[10px] font-black text-blue-600 uppercase">Pilih Semua</button>
+                            <button onclick="pmSelectAll(false)" class="text-[10px] font-black text-slate-400 uppercase">Kosongkan</button>
+                        </div>
+                    </div>
+                    <div id="pm-history-list" class="max-h-56 overflow-y-auto border rounded-2xl divide-y divide-slate-50"></div>
+                    <p class="text-[10px] text-slate-400 font-bold mt-2"><span id="pm-selected-count">0</span> transaksi dipilih dari tab <span id="pm-active-tab-label" class="uppercase"></span></p>
+                </div>
+            </div>
+
+            <div class="p-6 border-t flex gap-3 flex-shrink-0">
+                <button onclick="closePrintModal()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-100 text-slate-500">BATAL</button>
+                <button onclick="applyPrintSettings()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-900 text-white flex items-center justify-center gap-2"><i data-lucide="printer" class="w-4 h-4"></i> TERAPKAN & CETAK</button>
+            </div>
+        </div>
     </div>
 
     <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 hidden bg-slate-900 text-white px-10 py-5 rounded-full shadow-2xl font-black text-xs tracking-widest z-[200] animate__animated animate__fadeInUp"></div>
@@ -283,6 +494,17 @@
         const IURAN_NOMINAL = 70000;
         const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
         let state = { members: [], transactions: [], activeTab: 'Kas' };
+        let printSettings = {
+            orgName: 'MKAS PRO FINANCIAL SYSTEM',
+            reportTitle: 'Laporan Transaksi Keuangan',
+            reportPeriod: '',
+            logoDataUrl: '',
+            logoOpacity: 0.08,
+            showSignature: true,
+            signLeftRole: 'Mengetahui,', signLeftName: '',
+            signRightRole: 'Bendahara,', signRightName: '',
+            selectedIds: new Set()
+        };
 
         window.onload = () => {
             updateDate();
@@ -325,6 +547,8 @@
                 document.getElementById('mainApp').classList.remove('hidden');
                 const badge = document.getElementById('user-email-badge');
                 if (badge) badge.innerText = user.email;
+                const mobileBadge = document.getElementById('mobile-user-badge');
+                if (mobileBadge) mobileBadge.innerText = user.email;
                 loadAllData();
             } catch (err) {
                 console.error(err);
@@ -468,10 +692,26 @@
         function switchPage(id) {
             document.querySelectorAll('section').forEach(s => s.classList.add('hidden'));
             document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+            document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
             document.getElementById(`page-${id}`).classList.remove('hidden');
             if (document.getElementById(`nav-${id}`)) document.getElementById(`nav-${id}`).classList.add('active');
+            if (document.getElementById(`bnav-${id}`)) document.getElementById(`bnav-${id}`).classList.add('active');
             document.getElementById('pageTitle').innerText = id.charAt(0).toUpperCase() + id.slice(1);
+            const mpt = document.getElementById('mobilePageTitle');
+            if (mpt) mpt.innerText = id.charAt(0).toUpperCase() + id.slice(1);
+            toggleSidebar(false);
             renderAll();
+        }
+
+        // ── MOBILE SIDEBAR ───────────────────────────────────────
+        function toggleSidebar(open) {
+            const sb = document.getElementById('sidebarEl');
+            const ov = document.getElementById('sidebarOverlay');
+            const closeBtn = document.getElementById('sidebarCloseBtn');
+            if (!sb || !ov) return;
+            sb.classList.toggle('mobile-open', open);
+            ov.classList.toggle('active', open);
+            if (closeBtn) closeBtn.style.display = open ? 'flex' : 'none';
         }
 
         function renderAll() {
@@ -528,8 +768,9 @@
                 const isM = t.type==='Masuk';
                 if(isM) tin+=t.amount; else tout+=t.amount;
                 const deleteId = t._docId || t.id;
-                return `<tr class="border-b border-slate-50 hover:bg-slate-50/50"><td class="p-5">${t.date}</td><td class="p-5 font-black">${t.memberName}</td><td class="p-5"><span class="bg-slate-100 px-3 py-1 rounded-lg text-[9px] uppercase">${t.category}</span></td><td class="p-5 text-right text-emerald-600">${isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-right text-red-600">${!isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-center no-print"><button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button></td></tr>`;
-            }).join('') || '<tr><td colspan="6" class="p-10 text-center italic text-slate-300">Belum ada data</td></tr>';
+                const rowHidden = printSettings.selectedIds.size > 0 && !printSettings.selectedIds.has(deleteId) ? 'print-row-hidden' : '';
+                return `<tr class="border-b border-slate-50 hover:bg-slate-50/50 ${rowHidden}" data-trx-id="${deleteId}"><td class="p-5 no-print"><input type="checkbox" class="w-4 h-4 row-check" checked onchange="toggleRowSelect('${deleteId}', this.checked)"></td><td class="p-5">${t.date}</td><td class="p-5 font-black">${t.memberName}</td><td class="p-5"><span class="bg-slate-100 px-3 py-1 rounded-lg text-[9px] uppercase">${t.category}</span></td><td class="p-5 text-right text-emerald-600">${isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-right text-red-600">${!isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-center no-print"><button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button></td></tr>`;
+            }).join('') || '<tr><td colspan="7" class="p-10 text-center italic text-slate-300">Belum ada data</td></tr>';
             document.getElementById('sum-in').innerText  = `Rp ${tin.toLocaleString('id-ID')}`;
             document.getElementById('sum-out').innerText = `Rp ${tout.toLocaleString('id-ID')}`;
             document.getElementById('sum-net').innerText = `Rp ${net.toLocaleString('id-ID')}`;
@@ -568,6 +809,176 @@
 
         function checkManualCat() {
             document.getElementById('manual-cat-container').className = document.getElementById('trx-cat').value==='MANUAL' ? '' : 'hidden';
+        }
+
+        // ── PILIH BARIS LANGSUNG DI TABEL HISTORY ──────────────────
+        function toggleRowSelect(id, checked) {
+            // begin tracking selections explicitly once user interacts
+            if (printSettings.selectedIds.size === 0) {
+                state.transactions.filter(t => t.pos === state.activeTab).forEach(t => printSettings.selectedIds.add(t._docId || t.id));
+            }
+            if (checked) printSettings.selectedIds.add(id); else printSettings.selectedIds.delete(id);
+            const row = document.querySelector(`tr[data-trx-id="${id}"]`);
+            if (row) row.classList.toggle('print-row-hidden', !checked);
+        }
+
+        function toggleAllHistoryChecks(checked) {
+            document.querySelectorAll('#history-list .row-check').forEach(cb => {
+                cb.checked = checked;
+                const tr = cb.closest('tr');
+                const id = tr?.dataset.trxId;
+                if (id) toggleRowSelect(id, checked);
+            });
+        }
+
+        // ── MODAL EDIT & CETAK LAPORAN ──────────────────────────────
+        function openPrintModal() {
+            document.getElementById('pm-org-name').value = printSettings.orgName;
+            document.getElementById('pm-report-title').value = printSettings.reportTitle;
+            document.getElementById('pm-report-period').value = printSettings.reportPeriod;
+            document.getElementById('pm-sign-left-role').value = printSettings.signLeftRole;
+            document.getElementById('pm-sign-left-name').value = printSettings.signLeftName;
+            document.getElementById('pm-sign-right-role').value = printSettings.signRightRole;
+            document.getElementById('pm-sign-right-name').value = printSettings.signRightName;
+            document.getElementById('pm-show-signature').checked = printSettings.showSignature;
+            document.getElementById('pm-logo-opacity').value = Math.round(printSettings.logoOpacity * 100);
+            renderLogoPreview();
+            renderPmHistoryList();
+            document.getElementById('printModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closePrintModal() {
+            document.getElementById('printModal').classList.add('hidden');
+        }
+
+        function renderPmHistoryList() {
+            const list = document.getElementById('pm-history-list');
+            const filter = document.getElementById('filter-month').value;
+            const items = state.transactions.filter(t => {
+                if (t.pos !== state.activeTab) return false;
+                if (filter === 'ALL') return true;
+                const d = new Date(t.timestamp);
+                return `${MONTHS[d.getMonth()]} ${d.getFullYear()}` === filter;
+            });
+            // initialize selection (default: all selected) if empty
+            if (printSettings.selectedIds.size === 0) {
+                items.forEach(t => printSettings.selectedIds.add(t._docId || t.id));
+            }
+            document.getElementById('pm-active-tab-label').innerText = state.activeTab;
+            list.innerHTML = items.map(t => {
+                const id = t._docId || t.id;
+                const checked = printSettings.selectedIds.has(id) ? 'checked' : '';
+                const isM = t.type === 'Masuk';
+                return `<label class="flex items-center gap-3 p-3 text-xs hover:bg-slate-50 cursor-pointer">
+                    <input type="checkbox" ${checked} onchange="pmToggleItem('${id}', this.checked)" class="w-4 h-4 flex-shrink-0">
+                    <span class="font-bold flex-1">${t.date} — ${t.memberName}</span>
+                    <span class="text-slate-400">${t.category}</span>
+                    <span class="${isM ? 'text-emerald-600' : 'text-red-600'} font-black">${isM ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')}</span>
+                </label>`;
+            }).join('') || '<p class="p-6 text-center text-slate-300 italic text-xs">Tidak ada transaksi pada periode ini</p>';
+            updatePmSelectedCount();
+        }
+
+        function pmToggleItem(id, checked) {
+            if (checked) printSettings.selectedIds.add(id); else printSettings.selectedIds.delete(id);
+            updatePmSelectedCount();
+        }
+
+        function updatePmSelectedCount() {
+            document.getElementById('pm-selected-count').innerText = printSettings.selectedIds.size;
+        }
+
+        function pmSelectAll(select) {
+            const filter = document.getElementById('filter-month').value;
+            const items = state.transactions.filter(t => {
+                if (t.pos !== state.activeTab) return false;
+                if (filter === 'ALL') return true;
+                const d = new Date(t.timestamp);
+                return `${MONTHS[d.getMonth()]} ${d.getFullYear()}` === filter;
+            });
+            items.forEach(t => {
+                const id = t._docId || t.id;
+                if (select) printSettings.selectedIds.add(id); else printSettings.selectedIds.delete(id);
+            });
+            renderPmHistoryList();
+        }
+
+        function handleLogoUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) return showToast("FILE HARUS GAMBAR");
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                printSettings.logoDataUrl = ev.target.result;
+                renderLogoPreview();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeLogoWatermark() {
+            printSettings.logoDataUrl = '';
+            document.getElementById('pm-logo-input').value = '';
+            renderLogoPreview();
+        }
+
+        function renderLogoPreview() {
+            const box = document.getElementById('pm-logo-preview');
+            box.innerHTML = printSettings.logoDataUrl
+                ? `<img src="${printSettings.logoDataUrl}" class="w-full h-full object-contain">`
+                : `<i data-lucide="image" class="text-slate-300 w-6 h-6"></i>`;
+            lucide.createIcons();
+        }
+
+        function updateWatermarkOpacity() {
+            printSettings.logoOpacity = parseInt(document.getElementById('pm-logo-opacity').value) / 100;
+        }
+
+        function applyPrintSettings() {
+            printSettings.orgName = document.getElementById('pm-org-name').value.trim() || 'MKAS PRO FINANCIAL SYSTEM';
+            printSettings.reportTitle = document.getElementById('pm-report-title').value.trim() || 'Laporan Transaksi Keuangan';
+            printSettings.reportPeriod = document.getElementById('pm-report-period').value.trim();
+            printSettings.signLeftRole = document.getElementById('pm-sign-left-role').value.trim() || 'Mengetahui,';
+            printSettings.signLeftName = document.getElementById('pm-sign-left-name').value.trim();
+            printSettings.signRightRole = document.getElementById('pm-sign-right-role').value.trim() || 'Bendahara,';
+            printSettings.signRightName = document.getElementById('pm-sign-right-name').value.trim();
+            printSettings.showSignature = document.getElementById('pm-show-signature').checked;
+
+            // Apply header
+            const orgWords = printSettings.orgName.split(' ');
+            const lastWord = orgWords.pop();
+            document.getElementById('print-org-name').innerHTML = orgWords.length
+                ? `${orgWords.join(' ')} <span style="color:#e31e24">${lastWord}</span>`
+                : `<span style="color:#e31e24">${lastWord}</span>`;
+            document.getElementById('print-report-title').innerText = printSettings.reportTitle;
+            document.getElementById('print-report-period').innerText = printSettings.reportPeriod;
+
+            // Apply watermark
+            const wm = document.getElementById('print-watermark-img');
+            if (printSettings.logoDataUrl) {
+                wm.src = printSettings.logoDataUrl;
+                wm.style.opacity = printSettings.logoOpacity;
+            } else {
+                wm.src = '';
+            }
+
+            // Apply signature
+            document.getElementById('print-sign-left-role').innerText = printSettings.signLeftRole;
+            document.getElementById('print-sign-left-name').innerText = printSettings.signLeftName ? `(${printSettings.signLeftName})` : '(...........................)';
+            document.getElementById('print-sign-right-role').innerText = printSettings.signRightRole;
+            document.getElementById('print-sign-right-name').innerText = printSettings.signRightName ? `(${printSettings.signRightName})` : '(...........................)';
+            document.querySelector('.print-signature').style.display = printSettings.showSignature ? '' : 'none';
+
+            // Apply row filtering for print
+            document.querySelectorAll('#history-list tr[data-trx-id]').forEach(tr => {
+                const id = tr.dataset.trxId;
+                tr.classList.toggle('print-row-hidden', !printSettings.selectedIds.has(id));
+                const cb = tr.querySelector('.row-check');
+                if (cb) cb.checked = printSettings.selectedIds.has(id);
+            });
+
+            closePrintModal();
+            setTimeout(() => window.print(), 150);
         }
 
         function showToast(m) {
