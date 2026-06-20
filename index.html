@@ -156,7 +156,26 @@
             .glass-card:hover { transform: none; }
             table { font-size: 12px; }
             .icon-box { width: 40px; height: 40px; }
+
+            /* History: table -> card list on mobile */
+            #history-table-wrap { display: none; }
+            #history-card-list { display: flex; }
+
+            /* Transaction form: stack fields, full-width tap targets */
+            #page-transaction .grid-cols-2 { grid-template-columns: 1fr; gap: 12px; }
+            #page-transaction .glass-card { padding: 24px 18px; }
+            #trx-amount { font-size: 2.5rem !important; padding: 1.5rem !important; }
         }
+
+        #history-card-list { display: none; flex-direction: column; gap: 10px; }
+        .history-card { border: 1px solid #f1f5f9; border-radius: 16px; padding: 14px 16px; background: white; }
+        .history-card .hc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+        .history-card .hc-name { font-weight: 800; font-size: 13px; color: #0f172a; word-break: break-word; line-height: 1.3; }
+        .history-card .hc-date { font-size: 10px; font-weight: 700; color: #94a3b8; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+        .history-card .hc-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .history-card .hc-cat { background: #f1f5f9; padding: 4px 10px; border-radius: 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; color: #475569; word-break: break-word; }
+        .history-card .hc-amount { font-weight: 900; font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+        .history-card .hc-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #f1f5f9; }
 
         @media (max-width: 640px) {
             .main-content { padding: 12px; padding-bottom: 92px; }
@@ -373,12 +392,13 @@
                                 <button onclick="openPrintModal()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-xs font-black hover:bg-black flex items-center gap-2"><i data-lucide="settings-2" class="w-4 h-4"></i> EDIT & CETAK</button>
                             </div>
                         </div>
-                        <div class="overflow-x-auto rounded-2xl border border-slate-100">
+                        <div id="history-table-wrap" class="overflow-x-auto rounded-2xl border border-slate-100">
                             <table class="w-full text-left">
                                 <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-5 no-print w-10"><input type="checkbox" id="chk-all-history" onchange="toggleAllHistoryChecks(this.checked)" class="w-4 h-4"></th><th class="p-5">Tanggal</th><th class="p-5">Keterangan</th><th class="p-5">Kategori</th><th class="p-5 text-right">Debit</th><th class="p-5 text-right">Kredit</th><th class="p-5 text-center no-print">Aksi</th></tr></thead>
                                 <tbody id="history-list" class="text-xs font-bold text-slate-700"></tbody>
                             </table>
                         </div>
+                        <div id="history-card-list" class="no-print"></div>
                         <div class="mt-10 flex justify-end">
                             <div class="w-full md:w-80 p-8 rounded-[32px] bg-slate-900 text-white space-y-4">
                                 <div class="flex justify-between items-center"><span class="text-[10px] font-black uppercase text-slate-400">Masuk</span><span id="sum-in" class="text-emerald-400 font-black">Rp 0</span></div>
@@ -771,6 +791,29 @@
                 const rowHidden = printSettings.selectedIds.size > 0 && !printSettings.selectedIds.has(deleteId) ? 'print-row-hidden' : '';
                 return `<tr class="border-b border-slate-50 hover:bg-slate-50/50 ${rowHidden}" data-trx-id="${deleteId}"><td class="p-5 no-print"><input type="checkbox" class="w-4 h-4 row-check" checked onchange="toggleRowSelect('${deleteId}', this.checked)"></td><td class="p-5">${t.date}</td><td class="p-5 font-black">${t.memberName}</td><td class="p-5"><span class="bg-slate-100 px-3 py-1 rounded-lg text-[9px] uppercase">${t.category}</span></td><td class="p-5 text-right text-emerald-600">${isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-right text-red-600">${!isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-center no-print"><button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button></td></tr>`;
             }).join('') || '<tr><td colspan="7" class="p-10 text-center italic text-slate-300">Belum ada data</td></tr>';
+
+            const cardList = document.getElementById('history-card-list');
+            cardList.innerHTML = filtered.map(t => {
+                const isM = t.type==='Masuk';
+                const deleteId = t._docId || t.id;
+                return `<div class="history-card" data-trx-id="${deleteId}">
+                    <div class="hc-top">
+                        <div class="hc-name">${t.memberName}</div>
+                        <div class="hc-date">${t.date}</div>
+                    </div>
+                    <div class="hc-bottom">
+                        <span class="hc-cat">${t.category}</span>
+                        <span class="hc-amount ${isM ? 'text-emerald-600' : 'text-red-600'}">${isM ? '+' : '-'}Rp ${t.amount.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div class="hc-actions">
+                        <label class="flex items-center gap-2 text-[10px] font-bold text-slate-400 flex-1">
+                            <input type="checkbox" class="w-4 h-4 row-check-mobile" checked onchange="toggleRowSelect('${deleteId}', this.checked)"> Ikut dicetak
+                        </label>
+                        <button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-1"><i class="fas fa-trash-alt"></i></button>
+                    </div>
+                </div>`;
+            }).join('') || '<p class="p-8 text-center italic text-slate-300 text-xs">Belum ada data</p>';
+
             document.getElementById('sum-in').innerText  = `Rp ${tin.toLocaleString('id-ID')}`;
             document.getElementById('sum-out').innerText = `Rp ${tout.toLocaleString('id-ID')}`;
             document.getElementById('sum-net').innerText = `Rp ${net.toLocaleString('id-ID')}`;
@@ -819,7 +862,17 @@
             }
             if (checked) printSettings.selectedIds.add(id); else printSettings.selectedIds.delete(id);
             const row = document.querySelector(`tr[data-trx-id="${id}"]`);
-            if (row) row.classList.toggle('print-row-hidden', !checked);
+            if (row) {
+                row.classList.toggle('print-row-hidden', !checked);
+                const cb = row.querySelector('.row-check');
+                if (cb) cb.checked = checked;
+            }
+            const card = document.querySelector(`.history-card[data-trx-id="${id}"]`);
+            if (card) {
+                card.style.opacity = checked ? '1' : '0.4';
+                const cb = card.querySelector('.row-check-mobile');
+                if (cb) cb.checked = checked;
+            }
         }
 
         function toggleAllHistoryChecks(checked) {
@@ -975,6 +1028,13 @@
                 tr.classList.toggle('print-row-hidden', !printSettings.selectedIds.has(id));
                 const cb = tr.querySelector('.row-check');
                 if (cb) cb.checked = printSettings.selectedIds.has(id);
+            });
+            document.querySelectorAll('#history-card-list .history-card[data-trx-id]').forEach(card => {
+                const id = card.dataset.trxId;
+                const checked = printSettings.selectedIds.has(id);
+                card.style.opacity = checked ? '1' : '0.4';
+                const cb = card.querySelector('.row-check-mobile');
+                if (cb) cb.checked = checked;
             });
 
             closePrintModal();
