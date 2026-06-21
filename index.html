@@ -150,6 +150,27 @@
                 return ref.id;
             },
 
+            // Ubah nama anggota + ikut perbarui semua transaksi lama miliknya agar tetap terhubung (memberName disimpan sebagai teks, bukan id)
+            async updateMemberName(memberDocId, oldName, newName) {
+                const uid = currentUid();
+                const batch = writeBatch(db);
+                batch.update(doc(db, "members", memberDocId), { name: newName });
+
+                const trxSnap = await getDocs(query(
+                    collection(db, "transactions"),
+                    where("userId", "==", uid),
+                    where("memberName", "==", oldName)
+                ));
+                trxSnap.docs.forEach(d => batch.update(d.ref, { memberName: newName }));
+
+                await batch.commit();
+                return { renamedTransactions: trxSnap.docs.length };
+            },
+
+            async deleteMember(memberDocId) {
+                await deleteDoc(doc(db, "members", memberDocId));
+            },
+
             async saveTransaction(data) {
                 const ref = await addDoc(collection(db, "transactions"), { ...data, userId: currentUid() });
                 return ref.id;
@@ -418,7 +439,7 @@
                 <!-- LOGIN FORM -->
                 <div id="loginFormBlock">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2">Selamat Datang</h2>
-                    <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Anda</p>
+                    <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Firebase Anda</p>
                     <div class="space-y-6">
                         <div>
                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
@@ -600,6 +621,22 @@
                         <h2 class="text-3xl font-black relative z-10">Halo, Admin! 👋</h2>
                         <button onclick="switchPage('transaction')" class="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold transition-all relative z-10">Input Transaksi</button>
                     </div>
+
+                    <div class="glass-card p-8 bg-white">
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                            <h2 class="text-xl font-black flex items-center gap-3"><i data-lucide="trending-up" class="text-red-600"></i> Tren Keuangan 6 Bulan Terakhir</h2>
+                            <select id="chart-pos-filter" onchange="renderTrendChart()" class="px-4 py-2 border rounded-xl font-bold text-[10px] uppercase bg-slate-50 outline-none w-fit">
+                                <option value="Kas">KAS UTAMA</option>
+                                <option value="Tabungan">TABUNGAN</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-5 mb-4 text-[10px] font-black uppercase tracking-wider">
+                            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Pemasukan</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> Pengeluaran</span>
+                        </div>
+                        <svg id="trend-chart-svg" viewBox="0 0 600 220" class="w-full h-56" preserveAspectRatio="none"></svg>
+                        <div id="trend-chart-labels" class="flex justify-between mt-2 text-[9px] font-bold text-slate-400 uppercase"></div>
+                    </div>
                 </section>
 
                 <section id="page-transaction" class="hidden animate__animated animate__fadeInUp">
@@ -626,7 +663,7 @@
                 </section>
 
                 <section id="page-members" class="hidden animate__animated animate__fadeInUp">
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
                         <div class="glass-card p-8 h-fit bg-white">
                             <h2 class="text-xl font-black mb-6 flex items-center gap-3"><i data-lucide="user-plus" class="text-red-600"></i> Tambah Anggota</h2>
                             <input type="text" id="member-name" class="w-full p-4 border rounded-2xl font-bold bg-slate-50 outline-none mb-4" placeholder="Nama Lengkap Anggota">
@@ -638,6 +675,16 @@
                                 <select id="unpaid-month-filter" onchange="renderMembers()" class="px-4 py-2 border rounded-xl font-bold text-[10px] uppercase bg-slate-50 outline-none w-fit"></select>
                             </div>
                             <div class="overflow-hidden rounded-2xl border border-slate-100"><table class="w-full"><tbody id="member-list-unpaid"></tbody></table></div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-8 bg-white">
+                        <h2 class="text-xl font-black mb-6 flex items-center gap-3"><i data-lucide="users" class="text-red-600"></i> Daftar Semua Anggota</h2>
+                        <div class="overflow-hidden rounded-2xl border border-slate-100">
+                            <table class="w-full text-left">
+                                <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-5">Nama</th><th class="p-5 text-center no-print">Aksi</th></tr></thead>
+                                <tbody id="member-list-all" class="text-xs font-bold text-slate-700"></tbody>
+                            </table>
                         </div>
                     </div>
                 </section>
@@ -703,6 +750,23 @@
     <!-- ========== MODAL: LUPA PASSWORD ========== -->
 
     <!-- ========== MODAL: EDIT TRANSAKSI ========== -->
+    <!-- ========== MODAL: EDIT ANGGOTA ========== -->
+    <div id="editMemberModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6">
+            <div class="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center mb-4">
+                <i data-lucide="user-cog" class="text-blue-600 w-6 h-6"></i>
+            </div>
+            <h2 class="text-lg font-black mb-1">Edit Nama Anggota</h2>
+            <p class="text-sm text-slate-500 font-medium mb-5">Mengubah nama akan otomatis memperbarui nama pada seluruh riwayat transaksi anggota ini.</p>
+            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Baru</label>
+            <input type="text" id="edit-member-name" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 outline-none font-bold mb-5" placeholder="Nama Lengkap Anggota">
+            <div class="flex gap-3">
+                <button onclick="closeEditMemberModal()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-100 text-slate-500">BATAL</button>
+                <button onclick="saveEditedMember()" id="btn-save-edit-member" class="flex-1 py-3 rounded-xl font-black text-xs bg-blue-600 text-white">SIMPAN</button>
+            </div>
+        </div>
+    </div>
+
     <div id="editTrxModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
         <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl max-h-[90vh] flex flex-col">
             <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
@@ -1495,7 +1559,7 @@
                 }
 
                 renderAll();
-                updateCloudStatus('Online', 'emerald');
+                updateCloudStatus('Firebase Online', 'emerald');
             } catch (err) {
                 console.error(err);
                 updateCloudStatus('Error', 'red');
@@ -1524,6 +1588,69 @@
                 console.error(err); showToast("GAGAL MENYIMPAN ANGGOTA");
             } finally {
                 btn.disabled = false; btn.innerText = "DAFTARKAN";
+            }
+        }
+
+        // ── EDIT / HAPUS ANGGOTA ──────────────────────────────────
+        let editMemberCurrent = null;
+
+        function openEditMemberModal(docId, nameB64) {
+            const name = decodeURIComponent(atob(nameB64));
+            editMemberCurrent = { docId, oldName: name };
+            document.getElementById('edit-member-name').value = name;
+            document.getElementById('editMemberModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeEditMemberModal() {
+            document.getElementById('editMemberModal').classList.add('hidden');
+            editMemberCurrent = null;
+        }
+
+        async function saveEditedMember() {
+            if (!editMemberCurrent) return;
+            const newName = document.getElementById('edit-member-name').value.trim();
+            if (!newName) return showToast("NAMA TIDAK BOLEH KOSONG");
+
+            if (newName === editMemberCurrent.oldName) {
+                closeEditMemberModal();
+                return;
+            }
+
+            const isDuplicate = state.members.some(m => m.name.toLowerCase() === newName.toLowerCase() && (m._docId || m.id) !== editMemberCurrent.docId);
+            if (isDuplicate) return showToast("NAMA SUDAH DIPAKAI ANGGOTA LAIN");
+
+            const btn = document.getElementById('btn-save-edit-member');
+            btn.disabled = true; btn.innerText = "MENYIMPAN...";
+            try {
+                const fb = await waitForFirebase();
+                const result = await fb.updateMemberName(editMemberCurrent.docId, editMemberCurrent.oldName, newName);
+                await loadAllData();
+                closeEditMemberModal();
+                showToast(`NAMA DIPERBARUI (${result.renamedTransactions} TRANSAKSI IKUT DIPERBARUI)`);
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MENYIMPAN: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "SIMPAN";
+            }
+        }
+
+        async function deleteMemberConfirm(docId, nameB64) {
+            const name = decodeURIComponent(atob(nameB64));
+            const hasTransactions = state.transactions.some(t => t.memberName === name);
+            const warningExtra = hasTransactions ? '\n\nCatatan: riwayat transaksi anggota ini TIDAK akan ikut terhapus, hanya datanya dari daftar anggota.' : '';
+
+            if (!confirm(`Hapus anggota "${name}" dari daftar?${warningExtra}`)) return;
+
+            try {
+                const fb = await waitForFirebase();
+                await fb.deleteMember(docId);
+                await loadAllData();
+                showToast("ANGGOTA DIHAPUS");
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MENGHAPUS ANGGOTA: " + (err.message || err.code));
             }
         }
 
@@ -1580,7 +1707,7 @@
                 await fb.clearAllData();
                 state = { members:[], transactions:[], activeTab:'Kas' };
                 renderAll();
-                updateCloudStatus('Online','emerald');
+                updateCloudStatus('Firebase Online','emerald');
                 showToast("SEMUA DATA DIHAPUS");
             } catch (err) {
                 console.error(err); showToast("GAGAL RESET"); updateCloudStatus('Error','red');
@@ -1658,6 +1785,65 @@
             document.getElementById('stat-kas').innerText = `Rp ${kas.toLocaleString('id-ID')}`;
             document.getElementById('stat-savings').innerText = `Rp ${sav.toLocaleString('id-ID')}`;
             document.getElementById('stat-members-total').innerText = state.members.length;
+            renderTrendChart();
+        }
+
+        // ── GRAFIK TREN KEUANGAN (SVG murni, tanpa library tambahan) ──
+        function renderTrendChart() {
+            const svg = document.getElementById('trend-chart-svg');
+            const labelsBox = document.getElementById('trend-chart-labels');
+            if (!svg || !labelsBox) return;
+
+            const posFilter = document.getElementById('chart-pos-filter')?.value || 'Kas';
+            const now = new Date();
+            const months = [];
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                months.push({ year: d.getFullYear(), month: d.getMonth(), label: MONTHS[d.getMonth()].slice(0,3).toUpperCase() });
+            }
+
+            const data = months.map(m => {
+                const trxInMonth = state.transactions.filter(t => {
+                    if (t.pos !== posFilter) return false;
+                    const d = new Date(t.timestamp);
+                    return d.getMonth() === m.month && d.getFullYear() === m.year;
+                });
+                const masuk = trxInMonth.filter(t => t.type === 'Masuk').reduce((a,b) => a + b.amount, 0);
+                const keluar = trxInMonth.filter(t => t.type === 'Keluar').reduce((a,b) => a + b.amount, 0);
+                return { ...m, masuk, keluar };
+            });
+
+            const maxVal = Math.max(...data.map(d => Math.max(d.masuk, d.keluar)), 1);
+            const chartW = 600, chartH = 220, padBottom = 20, padTop = 10;
+            const usableH = chartH - padBottom - padTop;
+            const groupW = chartW / data.length;
+            const barW = groupW * 0.28;
+            const gap = groupW * 0.06;
+
+            let svgContent = '';
+            // garis bantu horizontal
+            for (let i = 0; i <= 3; i++) {
+                const y = padTop + (usableH / 3) * i;
+                svgContent += `<line x1="0" y1="${y}" x2="${chartW}" y2="${y}" stroke="#f1f5f9" stroke-width="1"/>`;
+            }
+
+            data.forEach((d, i) => {
+                const groupX = i * groupW;
+                const hMasuk = maxVal > 0 ? (d.masuk / maxVal) * usableH : 0;
+                const hKeluar = maxVal > 0 ? (d.keluar / maxVal) * usableH : 0;
+                const xMasuk = groupX + groupW/2 - barW - gap/2;
+                const xKeluar = groupX + groupW/2 + gap/2;
+
+                svgContent += `<rect x="${xMasuk}" y="${chartH - padBottom - hMasuk}" width="${barW}" height="${hMasuk}" rx="3" fill="#10b981">
+                    <title>${MONTHS[d.month]} ${d.year} — Masuk: Rp ${d.masuk.toLocaleString('id-ID')}</title>
+                </rect>`;
+                svgContent += `<rect x="${xKeluar}" y="${chartH - padBottom - hKeluar}" width="${barW}" height="${hKeluar}" rx="3" fill="#ef4444">
+                    <title>${MONTHS[d.month]} ${d.year} — Keluar: Rp ${d.keluar.toLocaleString('id-ID')}</title>
+                </rect>`;
+            });
+
+            svg.innerHTML = svgContent;
+            labelsBox.innerHTML = data.map(d => `<span>${d.label}</span>`).join('');
         }
 
         function renderMembers() {
@@ -1691,6 +1877,23 @@
 
             tbody.innerHTML = unpaidSelected.map(m => `<tr class="border-b border-slate-50"><td class="p-5 font-bold">${m.name}</td><td class="p-5 text-right"><button onclick="quickPay('${m.name}')" class="bg-emerald-500 text-white px-5 py-2 rounded-xl text-[10px] font-black">BAYAR IURAN</button></td></tr>`).join('')
                 || '<tr><td class="p-8 text-center italic text-slate-300 text-xs">Semua anggota sudah bayar iuran bulan ini 🎉</td></tr>';
+
+            // Daftar lengkap semua anggota (untuk edit/hapus)
+            const tbodyAll = document.getElementById('member-list-all');
+            if (tbodyAll) {
+                const sortedMembers = [...state.members].sort((a,b) => a.name.localeCompare(b.name, 'id'));
+                tbodyAll.innerHTML = sortedMembers.map(m => {
+                    const docId = m._docId || m.id;
+                    const nameB64 = btoa(encodeURIComponent(m.name));
+                    return `<tr class="border-b border-slate-50 hover:bg-slate-50/50">
+                        <td class="p-5 font-black">${m.name}</td>
+                        <td class="p-5 text-center"><div class="flex items-center justify-center gap-1">
+                            <button onclick="openEditMemberModal('${docId}', '${nameB64}')" class="text-slate-300 hover:text-blue-600 p-2"><i class="fas fa-pen"></i></button>
+                            <button onclick="deleteMemberConfirm('${docId}', '${nameB64}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button>
+                        </div></td>
+                    </tr>`;
+                }).join('') || '<tr><td colspan="2" class="p-10 text-center italic text-slate-300">Belum ada anggota terdaftar</td></tr>';
+            }
 
             updateUnpaidMarquee(unpaidThisMonth);
         }
