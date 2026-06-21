@@ -13,7 +13,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import {
-            getFirestore, collection, doc, getDocs, addDoc, deleteDoc, writeBatch, query, orderBy
+            getFirestore, collection, doc, getDocs, addDoc, deleteDoc, writeBatch, query, orderBy, where
         } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
         import {
             getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut
@@ -35,6 +35,12 @@
         const db  = getFirestore(app);
         const auth = getAuth(app);
 
+        // Setiap user hanya melihat & menulis data miliknya sendiri (userId = uid Firebase Auth)
+        function currentUid() {
+            if (!auth.currentUser) throw new Error("Sesi tidak ditemukan, silakan login ulang");
+            return auth.currentUser.uid;
+        }
+
         window._firebase = {
             // LOGIN pakai Firebase Email/Password
             async login(email, password) {
@@ -55,9 +61,10 @@
             },
 
             async getAllData() {
+                const uid = currentUid();
                 const [mSnap, tSnap] = await Promise.all([
-                    getDocs(collection(db, "members")),
-                    getDocs(query(collection(db, "transactions"), orderBy("timestamp", "asc")))
+                    getDocs(query(collection(db, "members"), where("userId", "==", uid))),
+                    getDocs(query(collection(db, "transactions"), where("userId", "==", uid), orderBy("timestamp", "asc")))
                 ]);
                 return {
                     members:      mSnap.docs.map(d => ({ _docId: d.id, ...d.data() })),
@@ -66,12 +73,12 @@
             },
 
             async saveMember(data) {
-                const ref = await addDoc(collection(db, "members"), data);
+                const ref = await addDoc(collection(db, "members"), { ...data, userId: currentUid() });
                 return ref.id;
             },
 
             async saveTransaction(data) {
-                const ref = await addDoc(collection(db, "transactions"), data);
+                const ref = await addDoc(collection(db, "transactions"), { ...data, userId: currentUid() });
                 return ref.id;
             },
 
@@ -80,10 +87,11 @@
             },
 
             async clearAllData() {
+                const uid = currentUid();
                 const batch = writeBatch(db);
                 const [mSnap, tSnap] = await Promise.all([
-                    getDocs(collection(db, "members")),
-                    getDocs(collection(db, "transactions"))
+                    getDocs(query(collection(db, "members"), where("userId", "==", uid))),
+                    getDocs(query(collection(db, "transactions"), where("userId", "==", uid)))
                 ]);
                 mSnap.docs.forEach(d => batch.delete(d.ref));
                 tSnap.docs.forEach(d => batch.delete(d.ref));
@@ -573,6 +581,22 @@
             selectedIds: new Set()
         };
 
+        // Bersihkan seluruh state lokal + sisa UI sebelum memuat data milik akun yang baru login/daftar.
+        // Mencegah data akun sebelumnya "nyangkut" di layar saat berganti akun.
+        function resetClientState() {
+            state = { members: [], transactions: [], activeTab: 'Kas' };
+            printSettings.selectedIds = new Set();
+            printSettings.logoDataUrl = '';
+            const hist = document.getElementById('history-list');
+            if (hist) hist.innerHTML = '';
+            const cardList = document.getElementById('history-card-list');
+            if (cardList) cardList.innerHTML = '';
+            const savingsGrid = document.getElementById('savings-grid');
+            if (savingsGrid) savingsGrid.innerHTML = '';
+            const memberList = document.getElementById('member-list-unpaid');
+            if (memberList) memberList.innerHTML = '';
+        }
+
         window.onload = () => {
             updateDate();
             populateMonthFilter();
@@ -639,6 +663,7 @@
             try {
                 const fb   = await waitForFirebase();
                 const user = await fb.login(email, password);
+                resetClientState();
                 document.getElementById('loginPage').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
                 setHeaderIdentity(user);
@@ -674,6 +699,7 @@
             try {
                 const fb   = await waitForFirebase();
                 const user = await fb.register(name, email, password);
+                resetClientState();
                 document.getElementById('loginPage').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
                 setHeaderIdentity(user);
