@@ -16,7 +16,8 @@
             getFirestore, collection, doc, getDocs, addDoc, deleteDoc, writeBatch, query, orderBy, where
         } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
         import {
-            getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut
+            getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut,
+            sendEmailVerification, reload
         } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
         // =====================================================
@@ -42,17 +43,38 @@
         }
 
         window._firebase = {
-            // LOGIN pakai Firebase Email/Password
+            // LOGIN pakai Firebase Email/Password — wajib email sudah terverifikasi
             async login(email, password) {
                 const cred = await signInWithEmailAndPassword(auth, email, password);
+                await reload(cred.user); // pastikan status verifikasi paling baru
+                if (!cred.user.emailVerified) {
+                    await signOut(auth); // jangan biarkan sesi "setengah login"
+                    const err = new Error("Email belum diverifikasi");
+                    err.code = "auth/email-not-verified";
+                    throw err;
+                }
                 return cred.user;
             },
 
-            // REGISTRASI akun baru + simpan nama sebagai displayName
+            // REGISTRASI akun baru + simpan nama sebagai displayName + kirim email verifikasi
             async register(name, email, password) {
                 const cred = await createUserWithEmailAndPassword(auth, email, password);
                 await updateProfile(cred.user, { displayName: name });
+                await sendEmailVerification(cred.user);
+                await signOut(auth); // jangan auto-login sebelum email diverifikasi
                 return cred.user;
+            },
+
+            // Kirim ulang email verifikasi (untuk akun yang belum verifikasi, dengan login sementara)
+            async resendVerification(email, password) {
+                const cred = await signInWithEmailAndPassword(auth, email, password);
+                if (cred.user.emailVerified) {
+                    await signOut(auth);
+                    return { alreadyVerified: true };
+                }
+                await sendEmailVerification(cred.user);
+                await signOut(auth);
+                return { alreadyVerified: false };
             },
 
             // LOGOUT Firebase
@@ -340,6 +362,26 @@
                         <button onclick="handleRegister()" id="btn-register" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold shadow-lg transition-all transform hover:scale-[1.02]">Daftar Sekarang</button>
                     </div>
                     <p class="text-center text-xs text-slate-400 font-medium mt-6">Sudah punya akun? <button onclick="toggleAuthMode('login')" class="text-red-600 font-bold hover:underline">Masuk di sini</button></p>
+                </div>
+
+                <!-- VERIFIKASI EMAIL -->
+                <div id="verifyEmailBlock" class="hidden">
+                    <div class="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center mb-5">
+                        <i data-lucide="mail-check" class="text-amber-600 w-7 h-7"></i>
+                    </div>
+                    <h2 class="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2">Verifikasi Email Anda</h2>
+                    <p class="text-slate-400 mb-1 text-sm font-medium">
+                        Link verifikasi telah dikirim ke
+                    </p>
+                    <p class="font-black text-slate-800 mb-6 text-sm" id="verify-email-target">-</p>
+                    <p class="text-slate-400 mb-6 text-xs font-medium leading-relaxed">
+                        Buka email tersebut dan klik link verifikasi (cek folder Spam/Promosi jika tidak ada di inbox). Setelah klik link, kembali ke sini dan tekan tombol di bawah.
+                    </p>
+                    <div class="space-y-3">
+                        <button onclick="handleCheckVerification()" id="btn-check-verify" class="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-xl font-bold shadow-lg shadow-red-600/30 transition-all transform hover:scale-[1.02]">Saya Sudah Verifikasi, Masuk Sekarang</button>
+                        <button onclick="handleResendVerification()" id="btn-resend-verify" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 py-4 rounded-xl font-bold transition-all">Kirim Ulang Email Verifikasi</button>
+                    </div>
+                    <p class="text-center text-xs text-slate-400 font-medium mt-6"><button onclick="backToLoginFromVerify()" class="text-red-600 font-bold hover:underline">&larr; Kembali ke halaman login</button></p>
                 </div>
 
                 <!-- mobile-only compact feature footer -->
@@ -688,6 +730,8 @@
         function toggleAuthMode(mode) {
             const loginBlock = document.getElementById('loginFormBlock');
             const registerBlock = document.getElementById('registerFormBlock');
+            const verifyBlock = document.getElementById('verifyEmailBlock');
+            verifyBlock.classList.add('hidden');
             if (mode === 'register') {
                 loginBlock.classList.add('hidden');
                 registerBlock.classList.remove('hidden');
@@ -725,14 +769,18 @@
                 checkAndOfferClaim();
             } catch (err) {
                 console.error(err);
-                const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
-                    ? "EMAIL / PASSWORD SALAH"
-                    : err.code === 'auth/user-not-found'
-                    ? "AKUN TIDAK DITEMUKAN"
-                    : err.code === 'auth/too-many-requests'
-                    ? "TERLALU BANYAK PERCOBAAN, COBA LAGI NANTI"
-                    : "LOGIN GAGAL: " + err.message;
-                showToast(msg);
+                if (err.code === 'auth/email-not-verified') {
+                    showUnverifiedNotice(email, password);
+                } else {
+                    const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
+                        ? "EMAIL / PASSWORD SALAH"
+                        : err.code === 'auth/user-not-found'
+                        ? "AKUN TIDAK DITEMUKAN"
+                        : err.code === 'auth/too-many-requests'
+                        ? "TERLALU BANYAK PERCOBAAN, COBA LAGI NANTI"
+                        : "LOGIN GAGAL: " + err.message;
+                    showToast(msg);
+                }
             } finally {
                 btn.disabled = false; btn.innerText = "Masuk Sekarang";
             }
@@ -752,14 +800,9 @@
             btn.disabled = true; btn.innerText = "MENDAFTARKAN...";
 
             try {
-                const fb   = await waitForFirebase();
-                const user = await fb.register(name, email, password);
-                resetClientState();
-                document.getElementById('loginPage').classList.add('hidden');
-                document.getElementById('mainApp').classList.remove('hidden');
-                setHeaderIdentity(user);
-                loadAllData();
-                showToast("AKUN BERHASIL DIBUAT, SELAMAT DATANG " + name.toUpperCase());
+                const fb = await waitForFirebase();
+                await fb.register(name, email, password);
+                showVerifyEmailScreen(email, password);
             } catch (err) {
                 console.error(err);
                 const msg = err.code === 'auth/email-already-in-use'
@@ -772,6 +815,77 @@
                 showToast(msg);
             } finally {
                 btn.disabled = false; btn.innerText = "Daftar Sekarang";
+            }
+        }
+
+        // ── LAYAR VERIFIKASI EMAIL ───────────────────────────────
+        function showVerifyEmailScreen(email, password) {
+            document.getElementById('loginFormBlock').classList.add('hidden');
+            document.getElementById('registerFormBlock').classList.add('hidden');
+            document.getElementById('verifyEmailBlock').classList.remove('hidden');
+            document.getElementById('verify-email-target').innerText = email;
+            document.getElementById('verifyEmailBlock').dataset.email = email;
+            document.getElementById('verifyEmailBlock').dataset.password = password;
+        }
+
+        function showUnverifiedNotice(email, password) {
+            showToast("EMAIL BELUM DIVERIFIKASI, CEK INBOX ANDA");
+            showVerifyEmailScreen(email, password);
+        }
+
+        function backToLoginFromVerify() {
+            document.getElementById('verifyEmailBlock').classList.add('hidden');
+            document.getElementById('registerFormBlock').classList.add('hidden');
+            document.getElementById('loginFormBlock').classList.remove('hidden');
+        }
+
+        async function handleResendVerification() {
+            const block = document.getElementById('verifyEmailBlock');
+            const email = block.dataset.email;
+            const password = block.dataset.password;
+            const btn = document.getElementById('btn-resend-verify');
+            btn.disabled = true; btn.innerText = "MENGIRIM...";
+            try {
+                const fb = await waitForFirebase();
+                const result = await fb.resendVerification(email, password);
+                if (result.alreadyVerified) {
+                    showToast("EMAIL SUDAH TERVERIFIKASI, SILAKAN LOGIN");
+                    backToLoginFromVerify();
+                } else {
+                    showToast("EMAIL VERIFIKASI DIKIRIM ULANG");
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL KIRIM ULANG: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "Kirim Ulang Email Verifikasi";
+            }
+        }
+
+        async function handleCheckVerification() {
+            const block = document.getElementById('verifyEmailBlock');
+            const email = block.dataset.email;
+            const password = block.dataset.password;
+            const btn = document.getElementById('btn-check-verify');
+            btn.disabled = true; btn.innerText = "MEMERIKSA...";
+            try {
+                const fb   = await waitForFirebase();
+                const user = await fb.login(email, password);
+                resetClientState();
+                document.getElementById('loginPage').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                setHeaderIdentity(user);
+                loadAllData();
+                checkAndOfferClaim();
+            } catch (err) {
+                if (err.code === 'auth/email-not-verified') {
+                    showToast("EMAIL MASIH BELUM DIVERIFIKASI, CEK INBOX/SPAM ANDA");
+                } else {
+                    console.error(err);
+                    showToast("GAGAL: " + (err.message || err.code));
+                }
+            } finally {
+                btn.disabled = false; btn.innerText = "Saya Sudah Verifikasi, Masuk Sekarang";
             }
         }
 
