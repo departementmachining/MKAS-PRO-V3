@@ -196,6 +196,72 @@
                 await batch.commit();
             },
 
+            // ── BACKUP OTOMATIS ──────────────────────────────────
+            // Snapshot dibuat otomatis tiap login. Maksimal 7 snapshot disimpan, sisanya dihapus otomatis.
+            async createBackupSnapshot(members, transactions) {
+                const uid = currentUid();
+                const now = Date.now();
+                const backupId = `${uid}_${now}`;
+                await setDoc(doc(db, "backups", backupId), {
+                    userId: uid,
+                    createdAt: now,
+                    memberCount: members.length,
+                    transactionCount: transactions.length,
+                    members: members.map(({_docId, ...rest}) => rest),
+                    transactions: transactions.map(({_docId, ...rest}) => rest)
+                });
+
+                // Hapus snapshot lama, sisakan maksimal 7 terbaru
+                const snap = await getDocs(query(collection(db, "backups"), where("userId", "==", uid)));
+                const sorted = snap.docs.sort((a,b) => b.data().createdAt - a.data().createdAt);
+                const toDelete = sorted.slice(7);
+                if (toDelete.length > 0) {
+                    const batch = writeBatch(db);
+                    toDelete.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                }
+                return { backupId, total: Math.min(sorted.length, 7) };
+            },
+
+            async listBackups() {
+                const uid = currentUid();
+                const snap = await getDocs(query(collection(db, "backups"), where("userId", "==", uid)));
+                return snap.docs
+                    .map(d => ({ id: d.id, createdAt: d.data().createdAt, memberCount: d.data().memberCount, transactionCount: d.data().transactionCount }))
+                    .sort((a,b) => b.createdAt - a.createdAt);
+            },
+
+            async restoreBackup(backupId) {
+                const uid = currentUid();
+                const snap = await getDoc(doc(db, "backups", backupId));
+                if (!snap.exists()) throw new Error("Backup tidak ditemukan");
+                const backupData = snap.data();
+                if (backupData.userId !== uid) throw new Error("Backup ini bukan milik akun Anda");
+
+                // Hapus seluruh data saat ini, lalu tulis ulang dari backup
+                const [mSnap, tSnap] = await Promise.all([
+                    getDocs(query(collection(db, "members"), where("userId", "==", uid))),
+                    getDocs(query(collection(db, "transactions"), where("userId", "==", uid)))
+                ]);
+                const deleteBatch = writeBatch(db);
+                mSnap.docs.forEach(d => deleteBatch.delete(d.ref));
+                tSnap.docs.forEach(d => deleteBatch.delete(d.ref));
+                await deleteBatch.commit();
+
+                const writeBatchOp = writeBatch(db);
+                (backupData.members || []).forEach(m => {
+                    const ref = doc(collection(db, "members"));
+                    writeBatchOp.set(ref, { ...m, userId: uid });
+                });
+                (backupData.transactions || []).forEach(t => {
+                    const ref = doc(collection(db, "transactions"));
+                    writeBatchOp.set(ref, { ...t, userId: uid });
+                });
+                await writeBatchOp.commit();
+
+                return { restoredMembers: (backupData.members||[]).length, restoredTransactions: (backupData.transactions||[]).length };
+            },
+
             // Cek (read-only) apakah ada dokumen lama tanpa userId — tidak menulis apapun.
             async checkOrphanData() {
                 const [mSnap, tSnap] = await Promise.all([
@@ -571,6 +637,7 @@
                     Status: Checking...
                 </div>
                 <div onclick="openProfileModal()" class="sidebar-item mb-2 text-slate-300 hover:bg-white/5"><i data-lucide="user-cog" class="w-5 h-5 mr-4"></i> Profil Saya</div>
+                <div onclick="openBackupModal()" class="sidebar-item mb-2 text-slate-300 hover:bg-white/5"><i data-lucide="database-backup" class="w-5 h-5 mr-4"></i> Backup & Pemulihan</div>
                 <div onclick="resetSystemData()" class="sidebar-item mb-2 text-orange-400 hover:bg-orange-500/10"><i data-lucide="refresh-ccw" class="w-5 h-5 mr-4"></i> Reset Data</div>
                 <div onclick="handleLogout()" class="sidebar-item mb-4 text-red-500 hover:bg-red-500/10"><i data-lucide="log-out" class="w-5 h-5 mr-4"></i> Keluar</div>
             </div>
@@ -753,6 +820,25 @@
     <!-- ========== MODAL: EDIT TRANSAKSI ========== -->
     <!-- ========== MODAL: EDIT ANGGOTA ========== -->
     <!-- ========== MODAL: KELOLA ANGGOTA (DAFTAR LENGKAP) ========== -->
+    <!-- ========== MODAL: BACKUP & PEMULIHAN ========== -->
+    <div id="backupModal" class="hidden fixed inset-0 z-[165] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl max-h-[85vh] flex flex-col">
+            <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
+                <h2 class="text-lg font-black flex items-center gap-2"><i data-lucide="database-backup" class="text-red-600 w-5 h-5"></i> Backup & Pemulihan</h2>
+                <button onclick="closeBackupModal()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="p-6 pb-3 flex-shrink-0">
+                <p class="text-xs text-slate-400 font-medium leading-relaxed mb-3">
+                    Sistem otomatis menyimpan salinan data (anggota & transaksi) setiap kali Anda login, maksimal <b>7 salinan terakhir</b>. Pilih salinan untuk dikembalikan jika ada data yang salah hapus atau salah ubah.
+                </p>
+                <button onclick="handleManualBackup()" id="btn-manual-backup" class="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-black text-xs flex items-center justify-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> BUAT BACKUP SEKARANG</button>
+            </div>
+            <div class="overflow-y-auto px-6 pb-6 flex-1">
+                <div id="backup-list" class="space-y-3"></div>
+            </div>
+        </div>
+    </div>
+
     <div id="memberListModal" class="hidden fixed inset-0 z-[165] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
         <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl max-h-[85vh] flex flex-col">
             <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
@@ -1585,6 +1671,13 @@
 
                 renderAll();
                 updateCloudStatus('Firebase Online', 'emerald');
+
+                // Backup otomatis di latar belakang (tidak menghambat tampilan). Hanya jika ada data.
+                if (state.members.length > 0 || state.transactions.length > 0) {
+                    fb.createBackupSnapshot(state.members, state.transactions)
+                        .then(r => console.log(`[MKAS] Backup otomatis dibuat (${r.total}/7 snapshot tersimpan)`))
+                        .catch(err => console.warn("[MKAS] Backup otomatis gagal:", err));
+                }
             } catch (err) {
                 console.error(err);
                 updateCloudStatus('Error', 'red');
@@ -1723,6 +1816,80 @@
                 showToast("TRANSAKSI DIHAPUS");
             } catch (err) {
                 console.error(err); showToast("GAGAL MENGHAPUS"); updateCloudStatus('Error','red');
+            }
+        }
+
+        // ── MODAL: BACKUP & PEMULIHAN ────────────────────────────
+        function formatBackupDate(ts) {
+            const d = new Date(ts);
+            const tgl = `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+            const jam = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            return `${tgl} • ${jam}`;
+        }
+
+        async function openBackupModal() {
+            document.getElementById('backupModal').classList.remove('hidden');
+            lucide.createIcons();
+            await renderBackupList();
+        }
+
+        function closeBackupModal() {
+            document.getElementById('backupModal').classList.add('hidden');
+        }
+
+        async function renderBackupList() {
+            const box = document.getElementById('backup-list');
+            box.innerHTML = '<p class="text-center text-xs text-slate-300 italic py-6">Memuat daftar backup...</p>';
+            try {
+                const fb = await waitForFirebase();
+                const backups = await fb.listBackups();
+                if (backups.length === 0) {
+                    box.innerHTML = '<p class="text-center text-xs text-slate-300 italic py-10">Belum ada backup tersimpan</p>';
+                    return;
+                }
+                box.innerHTML = backups.map((b, i) => `
+                    <div class="border border-slate-100 rounded-2xl p-4 flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-xs font-black text-slate-800">${formatBackupDate(b.createdAt)}</p>
+                            <p class="text-[10px] font-bold text-slate-400 mt-0.5">${b.memberCount} anggota • ${b.transactionCount} transaksi ${i===0 ? '<span class="text-emerald-600">(Terbaru)</span>' : ''}</p>
+                        </div>
+                        <button onclick="handleRestoreBackup('${b.id}')" class="bg-blue-50 hover:bg-blue-100 text-blue-600 px-4 py-2 rounded-xl font-black text-[10px] flex-shrink-0">PULIHKAN</button>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error(err);
+                box.innerHTML = `<p class="text-center text-xs text-red-400 italic py-10">Gagal memuat daftar backup: ${err.message || err.code}</p>`;
+            }
+        }
+
+        async function handleManualBackup() {
+            const btn = document.getElementById('btn-manual-backup');
+            btn.disabled = true; btn.innerText = "MENYIMPAN...";
+            try {
+                const fb = await waitForFirebase();
+                await fb.createBackupSnapshot(state.members, state.transactions);
+                await renderBackupList();
+                showToast("BACKUP BERHASIL DIBUAT");
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MEMBUAT BACKUP: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> BUAT BACKUP SEKARANG';
+                lucide.createIcons();
+            }
+        }
+
+        async function handleRestoreBackup(backupId) {
+            if (!confirm("Pulihkan data dari backup ini?\n\nSeluruh data anggota & transaksi SAAT INI akan diganti dengan isi backup yang dipilih. Tindakan ini tidak bisa dibatalkan.")) return;
+            try {
+                const fb = await waitForFirebase();
+                const result = await fb.restoreBackup(backupId);
+                await loadAllData();
+                closeBackupModal();
+                showToast(`DATA DIPULIHKAN: ${result.restoredMembers} ANGGOTA, ${result.restoredTransactions} TRANSAKSI`);
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MEMULIHKAN DATA: " + (err.message || err.code));
             }
         }
 
