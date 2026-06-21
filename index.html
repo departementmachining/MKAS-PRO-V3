@@ -9,12 +9,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 
     <!-- ========== FIREBASE SDK ========== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import {
-            getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc, deleteDoc, writeBatch, query, orderBy, where
+            getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, writeBatch, query, orderBy, where
         } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
         import {
             getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut,
@@ -157,6 +158,18 @@
 
             async deleteTransaction(docId) {
                 await deleteDoc(doc(db, "transactions", docId));
+            },
+
+            async updateTransaction(docId, data) {
+                await updateDoc(doc(db, "transactions", docId), data);
+            },
+
+            async updateMember(docId, data) {
+                await updateDoc(doc(db, "members", docId), data);
+            },
+
+            async deleteMember(docId) {
+                await deleteDoc(doc(db, "members", docId));
             },
 
             async clearAllData() {
@@ -414,7 +427,7 @@
                 <!-- LOGIN FORM -->
                 <div id="loginFormBlock">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2">Selamat Datang</h2>
-                    <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Firebase Anda</p>
+                    <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Anda</p>
                     <div class="space-y-6">
                         <div>
                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
@@ -596,6 +609,29 @@
                         <h2 class="text-3xl font-black relative z-10">Halo, Admin! 👋</h2>
                         <button onclick="switchPage('transaction')" class="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-xl font-bold transition-all relative z-10">Input Transaksi</button>
                     </div>
+                    <!-- GRAFIK TREN -->
+                    <div class="glass-card p-8 bg-white mb-10">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                            <h2 class="text-xl font-black flex items-center gap-3"><i data-lucide="trending-up" class="text-red-600"></i> Tren Pemasukan & Pengeluaran</h2>
+                            <div class="flex gap-2">
+                                <select id="chart-pos" onchange="renderTrendChart()" class="px-3 py-2 border rounded-xl font-bold text-xs bg-slate-50 outline-none">
+                                    <option value="Kas">KAS UTAMA</option>
+                                    <option value="Tabungan">TABUNGAN</option>
+                                </select>
+                                <select id="chart-period" onchange="renderTrendChart()" class="px-3 py-2 border rounded-xl font-bold text-xs bg-slate-50 outline-none">
+                                    <option value="6">6 Bulan</option>
+                                    <option value="12" selected>12 Bulan</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="relative" style="height:260px">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                        <div class="flex gap-6 mt-4 justify-center">
+                            <span class="flex items-center gap-2 text-xs font-bold text-slate-500"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>Masuk</span>
+                            <span class="flex items-center gap-2 text-xs font-bold text-slate-500"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span>Keluar</span>
+                        </div>
+                    </div>
                 </section>
 
                 <section id="page-transaction" class="hidden animate__animated animate__fadeInUp">
@@ -634,6 +670,16 @@
                                 <select id="unpaid-month-filter" onchange="renderMembers()" class="px-4 py-2 border rounded-xl font-bold text-[10px] uppercase bg-slate-50 outline-none w-fit"></select>
                             </div>
                             <div class="overflow-hidden rounded-2xl border border-slate-100"><table class="w-full"><tbody id="member-list-unpaid"></tbody></table></div>
+                        </div>
+                    </div>
+                    <!-- DAFTAR SEMUA ANGGOTA -->
+                    <div class="glass-card p-8 bg-white mt-8">
+                        <h2 class="text-xl font-black mb-6 flex items-center gap-3"><i data-lucide="users" class="text-red-600"></i> Daftar Semua Anggota</h2>
+                        <div class="overflow-hidden rounded-2xl border border-slate-100">
+                            <table class="w-full">
+                                <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-4 text-left">No</th><th class="p-4 text-left">Nama Anggota</th><th class="p-4 text-center">Aksi</th></tr></thead>
+                                <tbody id="member-list-all"></tbody>
+                            </table>
                         </div>
                     </div>
                 </section>
@@ -697,6 +743,76 @@
     <!-- ========== MODAL: EDIT & CETAK LAPORAN ========== -->
     <!-- ========== MODAL: KLAIM DATA LAMA (MIGRASI MULTI-USER) ========== -->
     <!-- ========== MODAL: LUPA PASSWORD ========== -->
+
+    <!-- ========== MODAL: EDIT ANGGOTA ========== -->
+    <div id="editMemberModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl">
+            <div class="p-6 border-b flex items-center justify-between">
+                <h2 class="text-lg font-black flex items-center gap-2"><i data-lucide="user-pen" class="text-red-600 w-5 h-5"></i> Edit Anggota</h2>
+                <button onclick="closeEditMemberModal()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Nama Anggota</label>
+                    <input type="text" id="edit-member-name" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm mt-1" placeholder="Nama Lengkap">
+                    <input type="hidden" id="edit-member-docid">
+                    <input type="hidden" id="edit-member-old-name">
+                </div>
+            </div>
+            <div class="p-6 border-t flex gap-3">
+                <button onclick="closeEditMemberModal()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-100 text-slate-500">BATAL</button>
+                <button onclick="saveEditedMember()" id="btn-save-edit-member" class="flex-1 py-3 rounded-xl font-black text-xs bg-red-600 text-white">SIMPAN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODAL: EDIT TRANSAKSI ========== -->
+    <div id="editTrxModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl max-h-[90vh] flex flex-col">
+            <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
+                <h2 class="text-lg font-black flex items-center gap-2"><i data-lucide="pencil-line" class="text-red-600 w-5 h-5"></i> Edit Transaksi</h2>
+                <button onclick="closeEditTrxModal()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Tanggal</label>
+                        <input type="date" id="edit-trx-date" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Kas / Tabungan</label>
+                        <select id="edit-trx-pos" onchange="updateEditTrxCats()" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm"><option value="Kas">KAS UTAMA</option><option value="Tabungan">TABUNGAN</option></select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Tipe</label>
+                        <select id="edit-trx-type" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm"><option value="Masuk">MASUK (DEBIT)</option><option value="Keluar">KELUAR (KREDIT)</option></select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Kategori</label>
+                        <select id="edit-trx-cat" onchange="checkEditManualCat()" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm"></select>
+                    </div>
+                </div>
+                <div id="edit-manual-cat-container" class="hidden">
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Keterangan Manual</label>
+                    <input type="text" id="edit-trx-cat-manual" class="w-full p-3 border-2 border-blue-100 rounded-xl font-bold bg-blue-50/30 outline-none text-sm" placeholder="Keterangan Manual...">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Nama Anggota</label>
+                    <select id="edit-trx-member" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-sm"></select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Nominal</label>
+                    <input type="number" id="edit-trx-amount" class="w-full p-4 border-2 border-slate-100 rounded-2xl font-black text-2xl text-center text-red-600 bg-slate-50 outline-none" placeholder="0">
+                </div>
+            </div>
+            <div class="p-6 border-t flex gap-3 flex-shrink-0">
+                <button onclick="closeEditTrxModal()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-100 text-slate-500">BATAL</button>
+                <button onclick="saveEditedTransaction()" id="btn-save-edit-trx" class="flex-1 py-3 rounded-xl font-black text-xs bg-red-600 text-white">SIMPAN PERUBAHAN</button>
+            </div>
+        </div>
+    </div>
 
     <div id="forgotPasswordModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
         <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6">
@@ -1443,7 +1559,7 @@
                 }
 
                 renderAll();
-                updateCloudStatus('Firebase Online', 'emerald');
+                updateCloudStatus('Online', 'emerald');
             } catch (err) {
                 console.error(err);
                 updateCloudStatus('Error', 'red');
@@ -1528,7 +1644,7 @@
                 await fb.clearAllData();
                 state = { members:[], transactions:[], activeTab:'Kas' };
                 renderAll();
-                updateCloudStatus('Firebase Online','emerald');
+                updateCloudStatus('Online','emerald');
                 showToast("SEMUA DATA DIHAPUS");
             } catch (err) {
                 console.error(err); showToast("GAGAL RESET"); updateCloudStatus('Error','red');
@@ -1606,6 +1722,7 @@
             document.getElementById('stat-kas').innerText = `Rp ${kas.toLocaleString('id-ID')}`;
             document.getElementById('stat-savings').innerText = `Rp ${sav.toLocaleString('id-ID')}`;
             document.getElementById('stat-members-total').innerText = state.members.length;
+            renderTrendChart();
         }
 
         function renderMembers() {
@@ -1641,6 +1758,25 @@
                 || '<tr><td class="p-8 text-center italic text-slate-300 text-xs">Semua anggota sudah bayar iuran bulan ini 🎉</td></tr>';
 
             updateUnpaidMarquee(unpaidThisMonth);
+
+            // Render daftar semua anggota dengan tombol edit/hapus
+            const allTbody = document.getElementById('member-list-all');
+            if (allTbody) {
+                allTbody.innerHTML = state.members.map((m, i) => {
+                    const docId = m._docId || '';
+                    const safeName = (m.name || '').replace(/'/g, "\\'");
+                    return `<tr class="border-b border-slate-50 hover:bg-slate-50/50">
+                        <td class="p-4 text-slate-400 font-bold text-sm">${i+1}</td>
+                        <td class="p-4 font-black text-sm">${m.name}</td>
+                        <td class="p-4 text-center">
+                            <div class="flex items-center justify-center gap-2">
+                                <button onclick="openEditMemberModal('${docId}','${safeName}')" class="text-slate-300 hover:text-blue-600 p-2 transition-colors" title="Edit"><i class="fas fa-pen"></i></button>
+                                <button onclick="deleteMember('${docId}','${safeName}')" class="text-slate-300 hover:text-red-600 p-2 transition-colors" title="Hapus"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('') || '<tr><td colspan="3" class="p-8 text-center italic text-slate-300 text-xs">Belum ada anggota terdaftar</td></tr>';
+            }
         }
 
         // ── RUNNING TEXT TUNGGAKAN ───────────────────────────────
@@ -1698,7 +1834,8 @@
                 const deleteId = t._docId || t.id;
                 const rowHidden = printSettings.excludedIds.has(deleteId) ? 'print-row-hidden' : '';
                 const isChecked = printSettings.excludedIds.has(deleteId) ? '' : 'checked';
-                return `<tr class="border-b border-slate-50 hover:bg-slate-50/50 ${rowHidden}" data-trx-id="${deleteId}"><td class="p-5 no-print"><input type="checkbox" class="w-4 h-4 row-check" ${isChecked} onchange="toggleRowSelect('${deleteId}', this.checked)"></td><td class="p-5">${t.date}</td><td class="p-5 font-black">${t.memberName}</td><td class="p-5"><span class="bg-slate-100 px-3 py-1 rounded-lg text-[9px] uppercase">${t.category}</span></td><td class="p-5 text-right text-emerald-600">${isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-right text-red-600">${!isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-center no-print"><button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button></td></tr>`;
+                const trxB64 = btoa(encodeURIComponent(JSON.stringify({...t, _docId: deleteId})));
+                return `<tr class="border-b border-slate-50 hover:bg-slate-50/50 ${rowHidden}" data-trx-id="${deleteId}"><td class="p-5 no-print"><input type="checkbox" class="w-4 h-4 row-check" ${isChecked} onchange="toggleRowSelect('${deleteId}', this.checked)"></td><td class="p-5">${t.date}</td><td class="p-5 font-black">${t.memberName}</td><td class="p-5"><span class="bg-slate-100 px-3 py-1 rounded-lg text-[9px] uppercase">${t.category}</span></td><td class="p-5 text-right text-emerald-600">${isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-right text-red-600">${!isM?'Rp '+t.amount.toLocaleString('id-ID'):'-'}</td><td class="p-5 text-center no-print"><div class="flex items-center justify-center gap-1"><button onclick="openEditTrxModal('${trxB64}')" class="text-slate-300 hover:text-blue-600 p-2"><i class="fas fa-pen"></i></button><button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button></div></td></tr>`;
             }).join('') || `<tr><td colspan="7" class="p-10 text-center italic text-slate-300">${keyword ? 'Tidak ada transaksi yang cocok dengan pencarian' : 'Belum ada data'}</td></tr>`;
 
             const cardList = document.getElementById('history-card-list');
@@ -1707,6 +1844,7 @@
                 const deleteId = t._docId || t.id;
                 const isExcluded = printSettings.excludedIds.has(deleteId);
                 const isChecked = isExcluded ? '' : 'checked';
+                const trxB64 = btoa(encodeURIComponent(JSON.stringify({...t, _docId: deleteId})));
                 return `<div class="history-card" data-trx-id="${deleteId}" style="opacity:${isExcluded ? '0.4' : '1'}">
                     <div class="hc-top">
                         <div class="hc-name">${t.memberName}</div>
@@ -1720,6 +1858,7 @@
                         <label class="flex items-center gap-2 text-[10px] font-bold text-slate-400 flex-1">
                             <input type="checkbox" class="w-4 h-4 row-check-mobile" ${isChecked} onchange="toggleRowSelect('${deleteId}', this.checked)"> Ikut dicetak
                         </label>
+                        <button onclick="openEditTrxModal('${trxB64}')" class="text-slate-300 hover:text-blue-600 p-1"><i class="fas fa-pen"></i></button>
                         <button onclick="delTrx('${deleteId}')" class="text-slate-300 hover:text-red-600 p-1"><i class="fas fa-trash-alt"></i></button>
                     </div>
                 </div>`;
@@ -1756,6 +1895,104 @@
 
         function updateDate() {
             document.getElementById('pageDate').innerText = new Date().toLocaleDateString('id-ID',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+        }
+
+        // ── EDIT TRANSAKSI ───────────────────────────────────────
+        let editTrxCurrent = null;
+
+        function openEditTrxModal(trxB64) {
+            try {
+                editTrxCurrent = JSON.parse(decodeURIComponent(atob(trxB64)));
+            } catch (err) {
+                console.error(err);
+                return showToast("GAGAL MEMBUKA DATA TRANSAKSI");
+            }
+
+            const t = editTrxCurrent;
+            const d = new Date(t.timestamp);
+            const isoDate = !isNaN(d) ? d.toISOString().split('T')[0] : '';
+
+            document.getElementById('edit-trx-date').value = isoDate;
+            document.getElementById('edit-trx-pos').value = t.pos;
+            document.getElementById('edit-trx-type').value = t.type;
+            updateEditTrxCats();
+
+            // isi member dropdown
+            const memberSel = document.getElementById('edit-trx-member');
+            memberSel.innerHTML = '<option value="UMUM">UMUM / PENGELOLA</option>';
+            state.members.forEach(m => memberSel.innerHTML += `<option value="${m.name}">${m.name}</option>`);
+            memberSel.value = t.memberName || 'UMUM';
+
+            // isi kategori (cek apakah kategori termasuk opsi standar, kalau tidak berarti manual)
+            const catSel = document.getElementById('edit-trx-cat');
+            const standardValues = Array.from(catSel.options).map(o => o.value).filter(v => v !== 'MANUAL');
+            if (standardValues.includes(t.category)) {
+                catSel.value = t.category;
+                checkEditManualCat();
+            } else {
+                catSel.value = 'MANUAL';
+                checkEditManualCat();
+                document.getElementById('edit-trx-cat-manual').value = t.category || '';
+            }
+
+            document.getElementById('edit-trx-amount').value = t.amount;
+            document.getElementById('editTrxModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeEditTrxModal() {
+            document.getElementById('editTrxModal').classList.add('hidden');
+            editTrxCurrent = null;
+        }
+
+        function updateEditTrxCats() {
+            const pos = document.getElementById('edit-trx-pos').value;
+            const sel = document.getElementById('edit-trx-cat');
+            sel.innerHTML = pos==='Kas'
+                ? '<option value="Iuran Kas">Iuran Kas Bulanan</option><option value="Kas Barga">Kas Barga</option><option value="Kebutuhan Alat">Kebutuhan Alat</option><option value="MANUAL">MANUAL</option>'
+                : '<option value="Setoran Tabungan">Setoran Tabungan</option><option value="Penarikan Tabungan">Penarikan Tabungan</option><option value="MANUAL">MANUAL</option>';
+            checkEditManualCat();
+        }
+
+        function checkEditManualCat() {
+            document.getElementById('edit-manual-cat-container').className = document.getElementById('edit-trx-cat').value==='MANUAL' ? '' : 'hidden';
+        }
+
+        async function saveEditedTransaction() {
+            if (!editTrxCurrent) return;
+            const amount = parseInt(document.getElementById('edit-trx-amount').value);
+            if (!amount || amount <= 0) return showToast("NOMINAL TIDAK VALID");
+
+            let category = document.getElementById('edit-trx-cat').value;
+            if (category === 'MANUAL') category = document.getElementById('edit-trx-cat-manual').value || "Lain-lain";
+
+            const dateVal = document.getElementById('edit-trx-date').value;
+            if (!dateVal) return showToast("TANGGAL TIDAK VALID");
+            const d = new Date(dateVal);
+
+            const updatedData = {
+                date: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
+                timestamp: d.getTime(),
+                pos: document.getElementById('edit-trx-pos').value,
+                type: document.getElementById('edit-trx-type').value,
+                memberName: document.getElementById('edit-trx-member').value,
+                category, amount
+            };
+
+            const btn = document.getElementById('btn-save-edit-trx');
+            btn.disabled = true; btn.innerText = "MENYIMPAN...";
+            try {
+                const fb = await waitForFirebase();
+                await fb.updateTransaction(editTrxCurrent._docId, updatedData);
+                await loadAllData();
+                closeEditTrxModal();
+                showToast("TRANSAKSI BERHASIL DIPERBARUI");
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MEMPERBARUI TRANSAKSI: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "SIMPAN PERUBAHAN";
+            }
         }
 
         function updateTrxCats() {
@@ -2013,6 +2250,139 @@
             } finally {
                 document.body.removeChild(wrapper);
             }
+        }
+
+        // ── EDIT / HAPUS ANGGOTA ─────────────────────────────────
+        function openEditMemberModal(docId, name) {
+            document.getElementById('edit-member-docid').value = docId;
+            document.getElementById('edit-member-old-name').value = name;
+            document.getElementById('edit-member-name').value = name;
+            document.getElementById('editMemberModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeEditMemberModal() {
+            document.getElementById('editMemberModal').classList.add('hidden');
+        }
+
+        async function saveEditedMember() {
+            const docId   = document.getElementById('edit-member-docid').value;
+            const oldName = document.getElementById('edit-member-old-name').value;
+            const newName = document.getElementById('edit-member-name').value.trim();
+            if (!newName) return showToast("NAMA TIDAK BOLEH KOSONG");
+
+            const btn = document.getElementById('btn-save-edit-member');
+            btn.disabled = true; btn.innerText = "MENYIMPAN...";
+            try {
+                const fb = await waitForFirebase();
+                await fb.updateMember(docId, { name: newName });
+                // Update nama di transaksi yang sudah ada agar konsisten
+                const trxToUpdate = state.transactions.filter(t => t.memberName === oldName);
+                for (const t of trxToUpdate) {
+                    const tId = t._docId || t.id;
+                    if (tId) await fb.updateTransaction(tId, { memberName: newName });
+                }
+                await loadAllData();
+                closeEditMemberModal();
+                showToast(`NAMA "${oldName}" DIUBAH MENJADI "${newName}"`);
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MEMPERBARUI ANGGOTA: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "SIMPAN";
+            }
+        }
+
+        async function deleteMember(docId, name) {
+            if (!confirm(`Hapus anggota "${name}"?\nData transaksi yang terkait TIDAK akan ikut terhapus.`)) return;
+            try {
+                const fb = await waitForFirebase();
+                await fb.deleteMember(docId);
+                await loadAllData();
+                showToast(`ANGGOTA "${name}" DIHAPUS`);
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MENGHAPUS ANGGOTA: " + (err.message || err.code));
+            }
+        }
+
+        // ── GRAFIK TREN PEMASUKAN & PENGELUARAN ──────────────────
+        let trendChartInstance = null;
+
+        function renderTrendChart() {
+            const pos    = (document.getElementById('chart-pos')?.value) || 'Kas';
+            const months = parseInt((document.getElementById('chart-period')?.value) || '12');
+            const now    = new Date();
+
+            const labels = [];
+            const dataIn  = [];
+            const dataOut = [];
+
+            for (let i = months - 1; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const monthKey = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+                labels.push(MONTHS[d.getMonth()].substring(0, 3) + " '" + String(d.getFullYear()).slice(-2));
+
+                const relevant = state.transactions.filter(t => {
+                    if (t.pos !== pos) return false;
+                    const td = new Date(t.timestamp);
+                    return td.getMonth() === d.getMonth() && td.getFullYear() === d.getFullYear();
+                });
+                dataIn.push(relevant.filter(t => t.type === 'Masuk').reduce((a, b) => a + b.amount, 0));
+                dataOut.push(relevant.filter(t => t.type === 'Keluar').reduce((a, b) => a + b.amount, 0));
+            }
+
+            const ctx = document.getElementById('trendChart');
+            if (!ctx) return;
+
+            if (trendChartInstance) { trendChartInstance.destroy(); trendChartInstance = null; }
+
+            trendChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Masuk',
+                            data: dataIn,
+                            backgroundColor: 'rgba(16,185,129,0.75)',
+                            borderRadius: 8,
+                            borderSkipped: false,
+                        },
+                        {
+                            label: 'Keluar',
+                            data: dataOut,
+                            backgroundColor: 'rgba(239,68,68,0.75)',
+                            borderRadius: 8,
+                            borderSkipped: false,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: Rp ${ctx.parsed.y.toLocaleString('id-ID')}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } },
+                        y: {
+                            grid: { color: 'rgba(148,163,184,0.1)' },
+                            ticks: {
+                                font: { size: 10 },
+                                color: '#94a3b8',
+                                callback: v => v >= 1000000 ? 'Rp ' + (v/1000000).toFixed(1) + 'jt' : v >= 1000 ? 'Rp ' + (v/1000).toFixed(0) + 'rb' : 'Rp ' + v
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function showToast(m) {
