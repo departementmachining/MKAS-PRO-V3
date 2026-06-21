@@ -62,8 +62,11 @@
                 const cred = await createUserWithEmailAndPassword(auth, email, password);
                 await updateProfile(cred.user, { displayName: name });
                 try {
+                    console.log("[MKAS] Mengirim email verifikasi ke:", cred.user.email, "| uid:", cred.user.uid);
                     await sendEmailVerification(cred.user);
+                    console.log("[MKAS] sendEmailVerification() selesai TANPA error untuk:", cred.user.email);
                 } catch (sendErr) {
+                    console.error("[MKAS] sendEmailVerification() GAGAL:", sendErr.code, sendErr.message);
                     // Akun sudah terbuat walau email gagal terkirim — beri tahu pemanggil secara eksplisit
                     await signOut(auth);
                     sendErr.accountCreated = true;
@@ -80,7 +83,9 @@
                     await signOut(auth);
                     return { alreadyVerified: true };
                 }
+                console.log("[MKAS] Kirim ulang verifikasi ke:", cred.user.email, "| uid:", cred.user.uid);
                 await sendEmailVerification(cred.user);
+                console.log("[MKAS] Kirim ulang selesai TANPA error untuk:", cred.user.email);
                 await signOut(auth);
                 return { alreadyVerified: false };
             },
