@@ -678,14 +678,15 @@
                         </div>
                     </div>
 
-                    <div class="glass-card p-8 bg-white">
-                        <h2 class="text-xl font-black mb-6 flex items-center gap-3"><i data-lucide="users" class="text-red-600"></i> Daftar Semua Anggota</h2>
-                        <div class="overflow-hidden rounded-2xl border border-slate-100">
-                            <table class="w-full text-left">
-                                <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-5">Nama</th><th class="p-5 text-center no-print">Aksi</th></tr></thead>
-                                <tbody id="member-list-all" class="text-xs font-bold text-slate-700"></tbody>
-                            </table>
+                    <div class="glass-card p-8 bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="icon-box bg-slate-100 text-slate-600 mb-0"><i data-lucide="users"></i></div>
+                            <div>
+                                <h2 class="text-lg font-black">Daftar Semua Anggota</h2>
+                                <p class="text-xs font-bold text-slate-400" id="member-all-count-label">0 anggota terdaftar</p>
+                            </div>
                         </div>
+                        <button onclick="openMemberListModal()" class="bg-slate-900 hover:bg-black text-white px-6 py-3 rounded-xl font-black text-xs flex items-center gap-2 justify-center"><i data-lucide="list" class="w-4 h-4"></i> KELOLA ANGGOTA</button>
                     </div>
                 </section>
 
@@ -751,6 +752,30 @@
 
     <!-- ========== MODAL: EDIT TRANSAKSI ========== -->
     <!-- ========== MODAL: EDIT ANGGOTA ========== -->
+    <!-- ========== MODAL: KELOLA ANGGOTA (DAFTAR LENGKAP) ========== -->
+    <div id="memberListModal" class="hidden fixed inset-0 z-[165] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl max-h-[85vh] flex flex-col">
+            <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
+                <h2 class="text-lg font-black flex items-center gap-2"><i data-lucide="users" class="text-red-600 w-5 h-5"></i> Kelola Anggota</h2>
+                <button onclick="closeMemberListModal()" class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="p-6 pb-3 flex-shrink-0">
+                <div class="relative">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input type="text" id="member-list-search" oninput="renderMemberListModal()" class="w-full pl-11 pr-4 py-3 border rounded-xl font-bold text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-red-500/20" placeholder="Cari nama anggota...">
+                </div>
+            </div>
+            <div class="overflow-y-auto px-6 pb-6 flex-1">
+                <div class="overflow-hidden rounded-2xl border border-slate-100">
+                    <table class="w-full text-left">
+                        <thead><tr class="text-[10px] uppercase font-black text-slate-400 tracking-widest border-b bg-slate-50"><th class="p-4">Nama</th><th class="p-4 text-center">Aksi</th></tr></thead>
+                        <tbody id="member-list-all" class="text-xs font-bold text-slate-700"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="editMemberModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
         <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6">
             <div class="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center mb-4">
@@ -1627,6 +1652,7 @@
                 const result = await fb.updateMemberName(editMemberCurrent.docId, editMemberCurrent.oldName, newName);
                 await loadAllData();
                 closeEditMemberModal();
+                if (!document.getElementById('memberListModal').classList.contains('hidden')) renderMemberListModal();
                 showToast(`NAMA DIPERBARUI (${result.renamedTransactions} TRANSAKSI IKUT DIPERBARUI)`);
             } catch (err) {
                 console.error(err);
@@ -1647,6 +1673,7 @@
                 const fb = await waitForFirebase();
                 await fb.deleteMember(docId);
                 await loadAllData();
+                if (!document.getElementById('memberListModal').classList.contains('hidden')) renderMemberListModal();
                 showToast("ANGGOTA DIHAPUS");
             } catch (err) {
                 console.error(err);
@@ -1878,24 +1905,46 @@
             tbody.innerHTML = unpaidSelected.map(m => `<tr class="border-b border-slate-50"><td class="p-5 font-bold">${m.name}</td><td class="p-5 text-right"><button onclick="quickPay('${m.name}')" class="bg-emerald-500 text-white px-5 py-2 rounded-xl text-[10px] font-black">BAYAR IURAN</button></td></tr>`).join('')
                 || '<tr><td class="p-8 text-center italic text-slate-300 text-xs">Semua anggota sudah bayar iuran bulan ini 🎉</td></tr>';
 
-            // Daftar lengkap semua anggota (untuk edit/hapus)
-            const tbodyAll = document.getElementById('member-list-all');
-            if (tbodyAll) {
-                const sortedMembers = [...state.members].sort((a,b) => a.name.localeCompare(b.name, 'id'));
-                tbodyAll.innerHTML = sortedMembers.map(m => {
-                    const docId = m._docId || m.id;
-                    const nameB64 = btoa(encodeURIComponent(m.name));
-                    return `<tr class="border-b border-slate-50 hover:bg-slate-50/50">
-                        <td class="p-5 font-black">${m.name}</td>
-                        <td class="p-5 text-center"><div class="flex items-center justify-center gap-1">
-                            <button onclick="openEditMemberModal('${docId}', '${nameB64}')" class="text-slate-300 hover:text-blue-600 p-2"><i class="fas fa-pen"></i></button>
-                            <button onclick="deleteMemberConfirm('${docId}', '${nameB64}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button>
-                        </div></td>
-                    </tr>`;
-                }).join('') || '<tr><td colspan="2" class="p-10 text-center italic text-slate-300">Belum ada anggota terdaftar</td></tr>';
-            }
+            // Label ringkas jumlah anggota (tabel lengkapnya ada di dalam modal "Kelola Anggota")
+            const countLabel = document.getElementById('member-all-count-label');
+            if (countLabel) countLabel.innerText = `${state.members.length} anggota terdaftar`;
 
             updateUnpaidMarquee(unpaidThisMonth);
+        }
+
+        // ── MODAL: KELOLA ANGGOTA (popup daftar lengkap) ─────────
+        function openMemberListModal() {
+            const search = document.getElementById('member-list-search');
+            if (search) search.value = '';
+            renderMemberListModal();
+            document.getElementById('memberListModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeMemberListModal() {
+            document.getElementById('memberListModal').classList.add('hidden');
+        }
+
+        function renderMemberListModal() {
+            const tbodyAll = document.getElementById('member-list-all');
+            if (!tbodyAll) return;
+            const keyword = (document.getElementById('member-list-search')?.value || '').trim().toLowerCase();
+
+            const sortedMembers = [...state.members]
+                .filter(m => !keyword || m.name.toLowerCase().includes(keyword))
+                .sort((a,b) => a.name.localeCompare(b.name, 'id'));
+
+            tbodyAll.innerHTML = sortedMembers.map(m => {
+                const docId = m._docId || m.id;
+                const nameB64 = btoa(encodeURIComponent(m.name));
+                return `<tr class="border-b border-slate-50 hover:bg-slate-50/50">
+                    <td class="p-4 font-black">${m.name}</td>
+                    <td class="p-4 text-center"><div class="flex items-center justify-center gap-1">
+                        <button onclick="openEditMemberModal('${docId}', '${nameB64}')" class="text-slate-300 hover:text-blue-600 p-2"><i class="fas fa-pen"></i></button>
+                        <button onclick="deleteMemberConfirm('${docId}', '${nameB64}')" class="text-slate-300 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button>
+                    </div></td>
+                </tr>`;
+            }).join('') || `<tr><td colspan="2" class="p-10 text-center italic text-slate-300">${keyword ? 'Tidak ada anggota yang cocok' : 'Belum ada anggota terdaftar'}</td></tr>`;
         }
 
         // ── RUNNING TEXT TUNGGAKAN ───────────────────────────────
