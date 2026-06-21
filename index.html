@@ -395,7 +395,7 @@
                 <!-- LOGIN FORM -->
                 <div id="loginFormBlock">
                     <h2 class="text-2xl md:text-3xl font-extrabold text-slate-800 mb-2">Selamat Datang</h2>
-                    <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Firebase Anda</p>
+                    <p class="text-slate-400 mb-8 text-sm font-medium">Masuk menggunakan email Anda</p>
                     <div class="space-y-6">
                         <div>
                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
@@ -1348,7 +1348,7 @@
                 }
 
                 renderAll();
-                updateCloudStatus('Firebase Online', 'emerald');
+                updateCloudStatus('Online', 'emerald');
             } catch (err) {
                 console.error(err);
                 updateCloudStatus('Error', 'red');
@@ -1433,7 +1433,7 @@
                 await fb.clearAllData();
                 state = { members:[], transactions:[], activeTab:'Kas' };
                 renderAll();
-                updateCloudStatus('Firebase Online','emerald');
+                updateCloudStatus('Online','emerald');
                 showToast("SEMUA DATA DIHAPUS");
             } catch (err) {
                 console.error(err); showToast("GAGAL RESET"); updateCloudStatus('Error','red');
