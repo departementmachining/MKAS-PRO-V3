@@ -13,7 +13,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import {
-            getFirestore, collection, doc, getDocs, addDoc, deleteDoc, writeBatch, query, orderBy, where
+            getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc, deleteDoc, writeBatch, query, orderBy, where
         } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
         import {
             getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signOut,
@@ -118,6 +118,18 @@
 
             getCurrentUser() {
                 return auth.currentUser;
+            },
+
+            // PENGATURAN PER AKUN (misal nominal iuran default) — disimpan di koleksi "settings", 1 dokumen per uid
+            async getSettings() {
+                const uid = currentUid();
+                const snap = await getDoc(doc(db, "settings", uid));
+                return snap.exists() ? snap.data() : {};
+            },
+
+            async saveSettings(data) {
+                const uid = currentUid();
+                await setDoc(doc(db, "settings", uid), data, { merge: true });
             },
 
             async getAllData() {
@@ -603,25 +615,6 @@
     <!-- ========== MODAL: EDIT & CETAK LAPORAN ========== -->
     <!-- ========== MODAL: KLAIM DATA LAMA (MIGRASI MULTI-USER) ========== -->
     <!-- ========== MODAL: LUPA PASSWORD ========== -->
-    <!-- ========== MODAL: BAYAR IURAN (NOMINAL BISA DIUBAH) ========== -->
-    <div id="payModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6">
-            <div class="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center mb-4">
-                <i data-lucide="hand-coins" class="text-emerald-600 w-6 h-6"></i>
-            </div>
-            <h2 class="text-lg font-black mb-1">Bayar Iuran</h2>
-            <p class="text-sm text-slate-500 font-medium mb-5">Anggota: <span id="pay-member-name" class="font-black text-slate-800">-</span></p>
-            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nominal Iuran</label>
-            <div class="relative mb-5">
-                <span class="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">Rp</span>
-                <input type="number" id="pay-amount" class="w-full pl-11 pr-4 py-4 rounded-xl border-2 border-slate-100 bg-slate-50 font-black text-2xl outline-none focus:border-emerald-400" placeholder="70000">
-            </div>
-            <div class="flex gap-3">
-                <button onclick="closePayModal()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-100 text-slate-500">BATAL</button>
-                <button onclick="confirmQuickPay()" id="btn-confirm-pay" class="flex-1 py-3 rounded-xl font-black text-xs bg-emerald-600 text-white">SIMPAN PEMBAYARAN</button>
-            </div>
-        </div>
-    </div>
 
     <div id="forgotPasswordModal" class="hidden fixed inset-0 z-[170] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
         <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6">
@@ -660,6 +653,18 @@
                         </div>
                         <button onclick="handleUpdateProfileName()" id="btn-save-name" class="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold text-xs">SIMPAN NAMA</button>
                     </div>
+                </div>
+
+                <!-- Pengaturan Nominal Iuran -->
+                <div class="pt-2 border-t">
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 mt-4">Pengaturan Iuran</h3>
+                    <p class="text-xs text-slate-400 font-medium mb-3">Nominal ini otomatis terisi setiap kali tombol "Bayar Iuran" diklik di menu Members.</p>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Nominal Iuran Default</label>
+                    <div class="relative mb-3">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400">Rp</span>
+                        <input type="number" id="pf-iuran-nominal" class="w-full pl-11 pr-4 py-3 rounded-xl border-2 border-slate-100 bg-slate-50 font-black text-lg outline-none focus:border-emerald-400" placeholder="70000">
+                    </div>
+                    <button onclick="handleSaveIuranNominal()" id="btn-save-nominal" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-xs">SIMPAN NOMINAL</button>
                 </div>
 
                 <!-- Ganti password -->
@@ -796,7 +801,7 @@
     <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl font-bold text-[11px] tracking-wide z-[200] animate__animated animate__fadeInUp max-w-[90vw] sm:max-w-sm text-center leading-snug"></div>
 
     <script>
-        const IURAN_NOMINAL = 70000;
+        let iuranNominal = 70000; // default, akan dimuat dari Firestore per akun saat login
         const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
         let state = { members: [], transactions: [], activeTab: 'Kas' };
         let printSettings = {
@@ -815,6 +820,7 @@
         // Mencegah data akun sebelumnya "nyangkut" di layar saat berganti akun.
         function resetClientState() {
             state = { members: [], transactions: [], activeTab: 'Kas' };
+            iuranNominal = 70000;
             printSettings.selectedIds = new Set();
             printSettings.logoDataUrl = '';
             const hist = document.getElementById('history-list');
@@ -1076,12 +1082,32 @@
             document.getElementById('pf-current-password').value = '';
             document.getElementById('pf-new-password').value = '';
             document.getElementById('pf-new-password-confirm').value = '';
+            document.getElementById('pf-iuran-nominal').value = iuranNominal;
             document.getElementById('profileModal').classList.remove('hidden');
             lucide.createIcons();
         }
 
         function closeProfileModal() {
             document.getElementById('profileModal').classList.add('hidden');
+        }
+
+        async function handleSaveIuranNominal() {
+            const value = parseInt(document.getElementById('pf-iuran-nominal').value);
+            if (!value || value <= 0) return showToast("NOMINAL TIDAK VALID");
+
+            const btn = document.getElementById('btn-save-nominal');
+            btn.disabled = true; btn.innerText = "MENYIMPAN...";
+            try {
+                const fb = await waitForFirebase();
+                await fb.saveSettings({ iuranNominal: value });
+                iuranNominal = value;
+                showToast(`NOMINAL IURAN DEFAULT DISET RP ${value.toLocaleString('id-ID')}`);
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL SIMPAN NOMINAL: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "SIMPAN NOMINAL";
+            }
         }
 
         async function handleUpdateProfileName() {
@@ -1189,6 +1215,15 @@
                 const res = await fb.getAllData();
                 state.members      = res.members || [];
                 state.transactions = res.transactions || [];
+
+                // Muat pengaturan (nominal iuran default), gagal pun tidak mengganggu data utama
+                try {
+                    const settings = await fb.getSettings();
+                    if (settings && settings.iuranNominal) iuranNominal = settings.iuranNominal;
+                } catch (settingsErr) {
+                    console.warn("Gagal memuat pengaturan, pakai default:", settingsErr);
+                }
+
                 renderAll();
                 updateCloudStatus('Firebase Online', 'emerald');
             } catch (err) {
@@ -1282,47 +1317,21 @@
             }
         }
 
-        let payModalMemberName = '';
-
-        function openPayModal(name) {
-            payModalMemberName = name;
-            document.getElementById('pay-member-name').innerText = name;
-            document.getElementById('pay-amount').value = IURAN_NOMINAL;
-            document.getElementById('payModal').classList.remove('hidden');
-            lucide.createIcons();
-            setTimeout(() => document.getElementById('pay-amount').focus(), 100);
-        }
-
-        function closePayModal() {
-            document.getElementById('payModal').classList.add('hidden');
-            payModalMemberName = '';
-        }
-
-        async function confirmQuickPay() {
-            const amount = parseInt(document.getElementById('pay-amount').value);
-            if (!amount || amount <= 0) return showToast("NOMINAL TIDAK VALID");
-            const name = payModalMemberName;
-
-            const btn = document.getElementById('btn-confirm-pay');
-            btn.disabled = true; btn.innerText = "MENYIMPAN...";
-
+        async function quickPay(name) {
             const d = new Date();
             const newTrx = {
                 id: Date.now().toString(),
                 date: `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
                 timestamp: Date.now(),
-                pos: 'Kas', type: 'Masuk', memberName: name, category: 'Iuran Kas', amount: amount
+                pos: 'Kas', type: 'Masuk', memberName: name, category: 'Iuran Kas', amount: iuranNominal
             };
             try {
                 const fb = await waitForFirebase();
                 await fb.saveTransaction(newTrx);
                 await loadAllData();
-                closePayModal();
-                showToast(`IURAN ${name} RP ${amount.toLocaleString('id-ID')} LUNAS`);
+                showToast(`IURAN ${name} RP ${iuranNominal.toLocaleString('id-ID')} LUNAS`);
             } catch (err) {
                 console.error(err); showToast("GAGAL SIMPAN IURAN");
-            } finally {
-                btn.disabled = false; btn.innerText = "SIMPAN PEMBAYARAN";
             }
         }
 
@@ -1377,7 +1386,7 @@
             if (!tbody) return;
             const now = new Date();
             const unpaid = state.members.filter(m => !state.transactions.some(t => t.memberName===m.name && t.category==='Iuran Kas' && new Date(t.timestamp).getMonth()===now.getMonth() && new Date(t.timestamp).getFullYear()===now.getFullYear()));
-            tbody.innerHTML = unpaid.map(m => `<tr class="border-b border-slate-50"><td class="p-5 font-bold">${m.name}</td><td class="p-5 text-right"><button onclick="openPayModal('${m.name}')" class="bg-emerald-500 text-white px-5 py-2 rounded-xl text-[10px] font-black">BAYAR IURAN</button></td></tr>`).join('');
+            tbody.innerHTML = unpaid.map(m => `<tr class="border-b border-slate-50"><td class="p-5 font-bold">${m.name}</td><td class="p-5 text-right"><button onclick="quickPay('${m.name}')" class="bg-emerald-500 text-white px-5 py-2 rounded-xl text-[10px] font-black">BAYAR IURAN</button></td></tr>`).join('');
             document.getElementById('stat-unpaid').innerText = `${unpaid.length} Orang`;
             document.getElementById('current-month-label').innerText = `PERIODE: ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
         }
