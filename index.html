@@ -251,6 +251,16 @@
         .bottom-nav { display: none; }
         .sidebar-overlay { display: none; }
 
+        #history-card-list { display: none; flex-direction: column; gap: 10px; }
+        .history-card { border: 1px solid #f1f5f9; border-radius: 16px; padding: 14px 16px; background: white; }
+        .history-card .hc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+        .history-card .hc-name { font-weight: 800; font-size: 13px; color: #0f172a; word-break: break-word; line-height: 1.3; }
+        .history-card .hc-date { font-size: 10px; font-weight: 700; color: #94a3b8; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+        .history-card .hc-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .history-card .hc-cat { background: #f1f5f9; padding: 4px 10px; border-radius: 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; color: #475569; word-break: break-word; }
+        .history-card .hc-amount { font-weight: 900; font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+        .history-card .hc-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #f1f5f9; }
+
         @media (max-width: 1024px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -313,16 +323,6 @@
             #page-transaction .glass-card { padding: 24px 18px; }
             #trx-amount { font-size: 2.5rem !important; padding: 1.5rem !important; }
         }
-
-        #history-card-list { display: none; flex-direction: column; gap: 10px; }
-        .history-card { border: 1px solid #f1f5f9; border-radius: 16px; padding: 14px 16px; background: white; }
-        .history-card .hc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
-        .history-card .hc-name { font-weight: 800; font-size: 13px; color: #0f172a; word-break: break-word; line-height: 1.3; }
-        .history-card .hc-date { font-size: 10px; font-weight: 700; color: #94a3b8; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
-        .history-card .hc-bottom { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-        .history-card .hc-cat { background: #f1f5f9; padding: 4px 10px; border-radius: 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; color: #475569; word-break: break-word; }
-        .history-card .hc-amount { font-weight: 900; font-size: 14px; white-space: nowrap; flex-shrink: 0; }
-        .history-card .hc-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #f1f5f9; }
 
         @media (max-width: 640px) {
             .main-content { padding: 12px; padding-bottom: 92px; }
@@ -394,7 +394,9 @@
                     <div class="space-y-6">
                         <div>
                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
-                            <input type="email" id="login-email" onkeypress="handleEnter(event)" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-red-500/20 outline-none transition-all" placeholder="admin@email.com">
+                            <input type="email" id="login-email" list="recent-email-list" onkeypress="handleEnter(event)" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-red-500/20 outline-none transition-all" placeholder="admin@email.com">
+                            <datalist id="recent-email-list"></datalist>
+                            <div id="recent-email-chips" class="flex flex-wrap gap-2 mt-2"></div>
                         </div>
                         <div>
                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
@@ -873,8 +875,62 @@
             populateMonthFilter();
             document.getElementById('trx-date').value = new Date().toISOString().split('T')[0];
             updateTrxCats();
+            renderRecentEmailChips();
             lucide.createIcons();
         };
+
+        // ── HISTORI EMAIL LOGIN (tersimpan lokal di perangkat ini) ──
+        const RECENT_EMAIL_KEY = 'mkas_recent_emails';
+        const RECENT_EMAIL_MAX = 5;
+
+        function getRecentEmails() {
+            try {
+                const raw = localStorage.getItem(RECENT_EMAIL_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function saveEmailToLoginHistory(email) {
+            if (!email) return;
+            try {
+                let list = getRecentEmails().filter(e => e.toLowerCase() !== email.toLowerCase());
+                list.unshift(email);
+                list = list.slice(0, RECENT_EMAIL_MAX);
+                localStorage.setItem(RECENT_EMAIL_KEY, JSON.stringify(list));
+            } catch (_) { /* localStorage tidak tersedia, abaikan secara senyap */ }
+        }
+
+        function removeEmailFromHistory(email) {
+            try {
+                const list = getRecentEmails().filter(e => e !== email);
+                localStorage.setItem(RECENT_EMAIL_KEY, JSON.stringify(list));
+            } catch (_) {}
+            renderRecentEmailChips();
+        }
+
+        function fillLoginEmail(email) {
+            const input = document.getElementById('login-email');
+            if (input) { input.value = email; document.getElementById('login-password')?.focus(); }
+        }
+
+        function renderRecentEmailChips() {
+            const list = getRecentEmails();
+            const datalist = document.getElementById('recent-email-list');
+            const chipsBox = document.getElementById('recent-email-chips');
+            if (datalist) {
+                datalist.innerHTML = list.map(e => `<option value="${e}">`).join('');
+            }
+            if (chipsBox) {
+                chipsBox.innerHTML = list.map(e => `
+                    <span class="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-bold pl-3 pr-2 py-1.5 rounded-full cursor-pointer transition-colors" onclick="fillLoginEmail('${e}')">
+                        ${e}
+                        <span onclick="event.stopPropagation(); removeEmailFromHistory('${e}')" class="w-4 h-4 rounded-full bg-slate-300 hover:bg-red-400 hover:text-white flex items-center justify-center text-[9px] leading-none">&times;</span>
+                    </span>
+                `).join('');
+            }
+        }
 
         // ── Firebase helper ──────────────────────────────────────
         function waitForFirebase(timeout = 8000) {
@@ -936,6 +992,7 @@
             try {
                 const fb   = await waitForFirebase();
                 const user = await fb.login(email, password);
+                saveEmailToLoginHistory(email);
                 resetClientState();
                 document.getElementById('loginPage').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
@@ -1051,6 +1108,7 @@
             try {
                 const fb   = await waitForFirebase();
                 const user = await fb.login(email, password);
+                saveEmailToLoginHistory(email);
                 resetClientState();
                 document.getElementById('loginPage').classList.add('hidden');
                 document.getElementById('mainApp').classList.remove('hidden');
