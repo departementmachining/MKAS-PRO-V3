@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <!-- ========== FIREBASE SDK ========== -->
     <script type="module">
@@ -347,6 +348,10 @@
             }
             .print-row-hidden { display: none !important; }
             .print-signature.show-on-print { display: flex !important; }
+
+            /* Cetak SELALU pakai tabel (rapi, format baku), terlepas dari ukuran layar perangkat */
+            #history-table-wrap { display: block !important; overflow: visible !important; }
+            #history-card-list { display: none !important; }
         }
         .print-header { display: none; }
         .print-watermark { display: none; }
@@ -835,7 +840,7 @@
         </div>
     </div>
 
-    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl font-bold text-[11px] tracking-wide z-[200] animate__animated animate__fadeInUp max-w-[90vw] sm:max-w-sm text-center leading-snug"></div>
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden bg-slate-900 text-white px-4 py-2 rounded-xl shadow-xl font-semibold text-[10px] tracking-wide z-[200] animate__animated animate__fadeInUp max-w-[85vw] sm:max-w-[280px] text-center leading-tight"></div>
 
     <script>
         let iuranNominal = 70000; // default, akan dimuat dari Firestore per akun saat login
@@ -1811,7 +1816,62 @@
             });
 
             closePrintModal();
-            setTimeout(() => window.print(), 150);
+
+            if (isMobileDevice()) {
+                setTimeout(() => generatePdfMobile(), 150);
+            } else {
+                setTimeout(() => window.print(), 150);
+            }
+        }
+
+        function isMobileDevice() {
+            return window.matchMedia('(max-width: 1024px)').matches
+                || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        }
+
+        async function generatePdfMobile() {
+            showToast("MENYIAPKAN PDF...");
+
+            // Bungkus area cetak (header + tabel + ringkasan + tanda tangan) ke kontainer sementara,
+            // dirender ulang dalam bentuk tabel rapi (sama seperti tampilan desktop) khusus untuk PDF.
+            const printArea = document.querySelector('#page-history .glass-card');
+            if (!printArea) { showToast("GAGAL: AREA CETAK TIDAK DITEMUKAN"); return; }
+
+            const clone = printArea.cloneNode(true);
+            clone.querySelectorAll('.no-print').forEach(el => el.remove());
+            clone.querySelectorAll('.print-row-hidden').forEach(el => el.remove());
+            const tableWrap = clone.querySelector('#history-table-wrap');
+            if (tableWrap) tableWrap.style.cssText = 'display:block !important; overflow:visible !important;';
+            const cardList = clone.querySelector('#history-card-list');
+            if (cardList) cardList.remove();
+            const sig = clone.querySelector('.print-signature');
+            if (sig) sig.style.display = printSettings.showSignature ? 'flex' : 'none';
+            clone.style.cssText = 'background:white; box-shadow:none; border:none; padding:20px;';
+
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'background:white; padding:10px; width:780px;';
+            const headerClone = document.querySelector('.print-header').cloneNode(true);
+            headerClone.style.display = 'block';
+            wrapper.appendChild(headerClone);
+            wrapper.appendChild(clone);
+            document.body.appendChild(wrapper);
+
+            try {
+                const filename = `Laporan_${printSettings.reportTitle.replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+                await html2pdf().set({
+                    margin: 10,
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                }).from(wrapper).save();
+                showToast("PDF BERHASIL DIUNDUH");
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MEMBUAT PDF: " + (err.message || err));
+            } finally {
+                document.body.removeChild(wrapper);
+            }
         }
 
         function showToast(m) {
