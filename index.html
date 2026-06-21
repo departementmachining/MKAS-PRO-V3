@@ -202,6 +202,30 @@
                 await batch.commit();
 
                 return { claimed: orphanMembers.length + orphanTransactions.length };
+            },
+
+            // PEMULIHAN: pindahkan semua data dari akun lama (uid lama, biasanya terkunci verifikasi)
+            // ke akun yang sedang login sekarang. Dipakai saat akun lama tidak bisa lagi menerima email.
+            async transferDataFromOldUid(oldUid) {
+                if (!oldUid || !oldUid.trim()) throw new Error("UID lama tidak boleh kosong");
+                const newUid = currentUid();
+                if (oldUid === newUid) throw new Error("UID lama sama dengan akun yang sedang login");
+
+                const [mSnap, tSnap] = await Promise.all([
+                    getDocs(query(collection(db, "members"), where("userId", "==", oldUid))),
+                    getDocs(query(collection(db, "transactions"), where("userId", "==", oldUid)))
+                ]);
+
+                if (mSnap.docs.length === 0 && tSnap.docs.length === 0) {
+                    return { transferred: 0 };
+                }
+
+                const batch = writeBatch(db);
+                mSnap.docs.forEach(d => batch.update(d.ref, { userId: newUid }));
+                tSnap.docs.forEach(d => batch.update(d.ref, { userId: newUid }));
+                await batch.commit();
+
+                return { transferred: mSnap.docs.length + tSnap.docs.length };
             }
         };
 
@@ -695,6 +719,17 @@
                         <button onclick="handleChangePassword()" id="btn-save-password" class="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold text-xs">UBAH PASSWORD</button>
                     </div>
                 </div>
+
+                <!-- Pemulihan data dari akun lama yang terkunci -->
+                <div class="pt-2 border-t">
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 mt-4">Pindahkan Data dari Akun Lama</h3>
+                    <p class="text-xs text-slate-400 font-medium mb-3 leading-relaxed">
+                        Jika akun lama Anda tidak bisa diverifikasi (email tidak menerima), masukkan <b>UID</b> akun lama itu di sini untuk memindahkan semua data anggota & transaksinya ke akun yang sedang login ini. Lihat UID di Firebase Console &rarr; Authentication &rarr; Users &rarr; kolom "User UID".
+                    </p>
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">UID Akun Lama</label>
+                    <input type="text" id="pf-old-uid" class="w-full p-3 border rounded-xl font-bold bg-slate-50 outline-none text-xs mb-3" placeholder="Contoh: aB3xY9zPq...">
+                    <button onclick="handleTransferOldData()" id="btn-transfer-data" class="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-xl font-bold text-xs">PINDAHKAN DATA KE AKUN INI</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1157,6 +1192,31 @@
                 showToast(msg);
             } finally {
                 btn.disabled = false; btn.innerText = "UBAH PASSWORD";
+            }
+        }
+
+        async function handleTransferOldData() {
+            const oldUid = document.getElementById('pf-old-uid').value.trim();
+            if (!oldUid) return showToast("MASUKKAN UID AKUN LAMA TERLEBIH DAHULU");
+
+            const btn = document.getElementById('btn-transfer-data');
+            btn.disabled = true; btn.innerText = "MEMINDAHKAN...";
+            try {
+                const fb = await waitForFirebase();
+                const result = await fb.transferDataFromOldUid(oldUid);
+                if (result.transferred === 0) {
+                    showToast("TIDAK ADA DATA DITEMUKAN UNTUK UID TERSEBUT");
+                } else {
+                    showToast(`${result.transferred} DATA BERHASIL DIPINDAHKAN KE AKUN INI`);
+                    document.getElementById('pf-old-uid').value = '';
+                    closeProfileModal();
+                    await loadAllData();
+                }
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MEMINDAHKAN DATA: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "PINDAHKAN DATA KE AKUN INI";
             }
         }
 
