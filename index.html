@@ -96,6 +96,40 @@
                 mSnap.docs.forEach(d => batch.delete(d.ref));
                 tSnap.docs.forEach(d => batch.delete(d.ref));
                 await batch.commit();
+            },
+
+            // Cek (read-only) apakah ada dokumen lama tanpa userId — tidak menulis apapun.
+            async checkOrphanData() {
+                const [mSnap, tSnap] = await Promise.all([
+                    getDocs(collection(db, "members")),
+                    getDocs(collection(db, "transactions"))
+                ]);
+                const orphanMembers      = mSnap.docs.filter(d => !d.data().userId).length;
+                const orphanTransactions = tSnap.docs.filter(d => !d.data().userId).length;
+                return { count: orphanMembers + orphanTransactions, members: orphanMembers, transactions: orphanTransactions };
+            },
+
+            // MIGRASI: tandai dokumen lama (dibuat sebelum fitur multi-user) sebagai milik akun ini.
+            // Hanya menyentuh dokumen yang BENAR-BENAR belum punya field userId — aman, tidak menimpa data akun lain.
+            async claimOrphanData() {
+                const uid = currentUid();
+                const [mSnap, tSnap] = await Promise.all([
+                    getDocs(collection(db, "members")),
+                    getDocs(collection(db, "transactions"))
+                ]);
+                const orphanMembers      = mSnap.docs.filter(d => !d.data().userId);
+                const orphanTransactions = tSnap.docs.filter(d => !d.data().userId);
+
+                if (orphanMembers.length === 0 && orphanTransactions.length === 0) {
+                    return { claimed: 0 };
+                }
+
+                const batch = writeBatch(db);
+                orphanMembers.forEach(d => batch.update(d.ref, { userId: uid }));
+                orphanTransactions.forEach(d => batch.update(d.ref, { userId: uid }));
+                await batch.commit();
+
+                return { claimed: orphanMembers.length + orphanTransactions.length };
             }
         };
 
@@ -483,6 +517,26 @@
     </div>
 
     <!-- ========== MODAL: EDIT & CETAK LAPORAN ========== -->
+    <!-- ========== MODAL: KLAIM DATA LAMA (MIGRASI MULTI-USER) ========== -->
+    <div id="claimModal" class="hidden fixed inset-0 z-[160] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6">
+            <div class="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center mb-4">
+                <i data-lucide="database" class="text-amber-600 w-6 h-6"></i>
+            </div>
+            <h2 class="text-lg font-black mb-2">Data Lama Ditemukan</h2>
+            <p class="text-sm text-slate-500 font-medium mb-4">
+                Ditemukan <span id="claim-count" class="font-black text-slate-800">0</span> data (anggota & transaksi) yang dibuat sebelum fitur multi-akun aktif, dan belum terhubung ke akun manapun.
+            </p>
+            <p class="text-sm text-slate-500 font-medium mb-6">
+                Jika ini akun pertama/admin yang dulu memasukkan data tersebut, Anda bisa menghubungkan data lama itu ke akun ini sekarang. Proses ini aman dan tidak menghapus apapun.
+            </p>
+            <div class="flex gap-3">
+                <button onclick="dismissClaimModal()" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-100 text-slate-500">NANTI SAJA</button>
+                <button onclick="confirmClaimOrphanData()" id="btn-claim-confirm" class="flex-1 py-3 rounded-xl font-black text-xs bg-slate-900 text-white">HUBUNGKAN KE AKUN INI</button>
+            </div>
+        </div>
+    </div>
+
     <div id="printModal" class="hidden fixed inset-0 z-[150] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 no-print">
         <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl max-h-[90vh] flex flex-col animate__animated animate__fadeInUp animate__faster">
             <div class="p-6 border-b flex items-center justify-between flex-shrink-0">
@@ -668,6 +722,7 @@
                 document.getElementById('mainApp').classList.remove('hidden');
                 setHeaderIdentity(user);
                 loadAllData();
+                checkAndOfferClaim();
             } catch (err) {
                 console.error(err);
                 const msg = err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password'
@@ -717,6 +772,42 @@
                 showToast(msg);
             } finally {
                 btn.disabled = false; btn.innerText = "Daftar Sekarang";
+            }
+        }
+
+        // ── MIGRASI DATA LAMA (MULTI-USER) ──────────────────────
+        async function checkAndOfferClaim() {
+            try {
+                const fb = await waitForFirebase();
+                const result = await fb.checkOrphanData();
+                if (result.count > 0) {
+                    document.getElementById('claim-count').innerText = result.count;
+                    document.getElementById('claimModal').classList.remove('hidden');
+                    lucide.createIcons();
+                }
+            } catch (err) {
+                console.error("Gagal cek data lama:", err);
+            }
+        }
+
+        function dismissClaimModal() {
+            document.getElementById('claimModal').classList.add('hidden');
+        }
+
+        async function confirmClaimOrphanData() {
+            const btn = document.getElementById('btn-claim-confirm');
+            btn.disabled = true; btn.innerText = "MENGHUBUNGKAN...";
+            try {
+                const fb = await waitForFirebase();
+                const result = await fb.claimOrphanData();
+                dismissClaimModal();
+                showToast(`${result.claimed} DATA BERHASIL DIHUBUNGKAN KE AKUN INI`);
+                await loadAllData();
+            } catch (err) {
+                console.error(err);
+                showToast("GAGAL MENGHUBUNGKAN DATA: " + (err.message || err.code));
+            } finally {
+                btn.disabled = false; btn.innerText = "HUBUNGKAN KE AKUN INI";
             }
         }
 
