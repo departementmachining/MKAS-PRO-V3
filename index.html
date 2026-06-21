@@ -744,7 +744,13 @@
             } catch (err) {
                 console.error(err);
                 updateCloudStatus('Error', 'red');
-                showToast("GAGAL MENGAMBIL DATA");
+                if (err.code === 'failed-precondition') {
+                    showToast("INDEX FIRESTORE BELUM DIBUAT — CEK CONSOLE (F12) UNTUK LINK PEMBUATAN INDEX");
+                } else if (err.code === 'permission-denied') {
+                    showToast("AKSES DITOLAK — PERIKSA FIRESTORE SECURITY RULES");
+                } else {
+                    showToast("GAGAL MENGAMBIL DATA: " + (err.message || err.code || 'Unknown error'));
+                }
             }
         }
 
